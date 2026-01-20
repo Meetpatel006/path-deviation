@@ -1,0 +1,59 @@
+# =============================================================================
+# GPS Path Deviation Detection Backend - Docker Compose
+# =============================================================================
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: path-deviation
+    container_name: path-deviation-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Required: Mapbox API key (set in .env file or shell environment)
+      - MAPBOX_API_KEY=${MAPBOX_API_KEY}
+      # Database path inside container (mapped to volume)
+      - DATABASE_PATH=/app/data/path_deviation.db
+      # Logging configuration
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FILE=/app/logs/app.log
+      # GPS Buffer settings (optional, defaults work well)
+      - GPS_BATCH_SIZE=${GPS_BATCH_SIZE:-18}
+      - GPS_BATCH_TIMEOUT=${GPS_BATCH_TIMEOUT:-40}
+    volumes:
+      # Persist SQLite database across container restarts
+      - ./data:/app/data
+      # Persist application logs
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# =============================================================================
+# Usage:
+#   1. Set MAPBOX_API_KEY in .env file or export in shell:
+#      export MAPBOX_API_KEY=your_mapbox_api_key_here
+#
+#   2. Build and start:
+#      docker-compose up --build
+#
+#   3. Run in background:
+#      docker-compose up -d --build
+#
+#   4. View logs:
+#      docker-compose logs -f backend
+#
+#   5. Stop:
+#      docker-compose down
+#
+#   6. Access API:
+#      - Health check: http://localhost:8000/health
+#      - API docs:     http://localhost:8000/docs
+#      - WebSocket:    ws://localhost:8000/ws/journey/{journey_id}
+# =============================================================================

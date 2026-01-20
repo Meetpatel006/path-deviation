@@ -1,0 +1,64 @@
+# Shared libraries
+*.so
+
+# Python packaging artifacts
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE/editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Tests and coverage output
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+
+# Git metadata
+.git/
+.gitattributes
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Database and runtime data
+*.db
+*.db-shm
+*.db-wal
+path_deviation.db
+logs/
+*.log
+data/
+
+# Documentation
+docs/
+
+# OS clutter
+.DS_Store
+Thumbs.db
