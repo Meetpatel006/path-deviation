@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time E2E Test Dashboard - Path Deviation Detection</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.95);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+            color: #e2e8f0;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            grid-template-rows: auto 1fr auto;
+            height: 100vh;
+            gap: 1rem;
+            padding: 1rem;
+        }
+
+        @media (max-width: 1200px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        header {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1.5rem;
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo h1 {
+            font-size: 1.25rem;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .status-idle {
+            background: rgba(100, 116, 139, 0.3);
+        }
+
+        .status-running {
+            background: rgba(59, 130, 246, 0.3);
+            color: #60a5fa;
+        }
+
+        .status-success {
+            background: rgba(34, 197, 94, 0.3);
+            color: #4ade80;
+        }
+
+        .status-error {
+            background: rgba(239, 68, 68, 0.3);
+            color: #f87171;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        .pulse-dot.idle {
+            background: #64748b;
+        }
+
+        .pulse-dot.running {
+            background: #3b82f6;
+        }
+
+        .pulse-dot.success {
+            background: #22c55e;
+            animation: none;
+        }
+
+        .pulse-dot.error {
+            background: #ef4444;
+            animation: none;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.5;
+                transform: scale(1.2);
+            }
+        }
+
+        .btn {
+            padding: 0.6rem 1.25rem;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+
+        /* Map Container */
+        .map-container {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .map-header {
+            padding: 0.75rem 1rem;
+            background: rgba(15, 23, 42, 0.5);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .map-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+        }
+
+        #map {
+            flex: 1;
+            min-height: 400px;
+        }
+
+        /* Live Stats Bar */
+        .live-stats {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 0.5rem;
+            padding: 0.75rem;
+            background: rgba(15, 23, 42, 0.5);
+        }
+
+        .live-stat {
+            text-align: center;
+            padding: 0.5rem;
+            background: rgba(30, 41, 59, 0.5);
+            border-radius: 8px;
+        }
+
+        .live-stat-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #60a5fa;
+        }
+
+        .live-stat-label {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+        }
+
+        /* Right Panel */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 0.75rem 1rem;
+            background: rgba(15, 23, 42, 0.5);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Test Config */
+        .test-config {
+            padding: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin-bottom: 0.35rem;
+        }
+
+        .form-input,
+        .form-select {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-size: 0.9rem;
+        }
+
+        .form-input:focus,
+        .form-select:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        .coord-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+        }
+
+        .coord-display {
+            margin-top: 0.35rem;
+            color: #64748b;
+            font-size: 0.75rem;
+        }
+
+        .route-summary {
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 8px;
+            padding: 0.75rem;
+            text-align: center;
+        }
+
+        .route-visual {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .origin-dot {
+            color: #22c55e;
+        }
+
+        .route-line {
+            color: #64748b;
+            letter-spacing: -2px;
+        }
+
+        .dest-dot {
+            color: #ef4444;
+        }
+
+        .route-text {
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        .route-text strong {
+            color: #e2e8f0;
+        }
+
+        /* Test Log */
+        .test-log {
+            flex: 1;
+            min-height: 200px;
+            max-height: 300px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .log-entries {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem;
+            font-family: 'Consolas', monospace;
+            font-size: 0.75rem;
+            background: rgba(15, 23, 42, 0.3);
+        }
+
+        .log-entry {
+            padding: 0.35rem 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 0.25rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .log-entry.info {
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .log-entry.success {
+            background: rgba(34, 197, 94, 0.1);
+        }
+
+        .log-entry.warning {
+            background: rgba(245, 158, 11, 0.1);
+        }
+
+        .log-entry.error {
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .log-time {
+            color: #64748b;
+            min-width: 55px;
+        }
+
+        .log-msg {
+            flex: 1;
+            word-break: break-word;
+        }
+
+        /* Results Summary */
+        .results-summary {
+            padding: 1rem;
+        }
+
+        .result-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .result-name {
+            font-size: 0.85rem;
+        }
+
+        .result-badge {
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .badge-pass {
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+        }
+
+        .badge-fail {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+
+        .badge-pending {
+            background: rgba(100, 116, 139, 0.2);
+            color: #94a3b8;
+        }
+
+        .badge-running {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+        }
+
+        /* Progress bar */
+        .progress-container {
+            padding: 0.75rem 1rem;
+            background: rgba(15, 23, 42, 0.3);
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: rgba(100, 116, 139, 0.3);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #94a3b8;
+            margin-top: 0.35rem;
+        }
+
+        /* Vehicle marker animation */
+        .vehicle-marker {
+            width: 24px;
+            height: 24px;
+            background: #3b82f6;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+
+        .vehicle-marker::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid #3b82f6;
+            animation: radar 2s infinite;
+        }
+
+        @keyframes radar {
+            0% {
+                transform: translate(-50%, -50%) scale(0.5);
+                opacity: 1;
+            }
+
+            100% {
+                transform: translate(-50%, -50%) scale(1.5);
+                opacity: 0;
+            }
+        }
+
+        .deviation-marker {
+            background: #ef4444 !important;
+        }
+
+        .deviation-marker::after {
+            border-color: #ef4444;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="dashboard">
+        <header>
+            <div class="logo">
+                <span style="font-size: 1.5rem;">🛤️</span>
+                <h1>Path Deviation - Real-Time E2E Testing</h1>
+            </div>
+            <div class="header-controls">
+                <div class="status-indicator" id="globalStatus">
+                    <div class="pulse-dot idle"></div>
+                    <span>Ready</span>
+                </div>
+                <button class="btn btn-primary" id="runTestBtn" onclick="startTest()">
+                    ▶ Run Test
+                </button>
+                <button class="btn btn-danger" id="stopTestBtn" onclick="stopTest()" style="display: none;">
+                    ⏹ Stop
+                </button>
+            </div>
+        </header>
+
+        <!-- Map Section -->
+        <div class="map-container">
+            <div class="map-header">
+                <div class="map-title">
+                    <span>🗺️</span>
+                    <span>Live Route Tracking</span>
+                </div>
+                <div id="routeInfo" style="font-size: 0.8rem; color: #94a3b8;">
+                    Loading route data...
+                </div>
+            </div>
+            <div id="map"></div>
+            <div class="live-stats">
+                <div class="live-stat">
+                    <div class="live-stat-value" id="currentSpeed">0</div>
+                    <div class="live-stat-label">Speed (km/h)</div>
+                </div>
+                <div class="live-stat">
+                    <div class="live-stat-value" id="currentProgress">0%</div>
+                    <div class="live-stat-label">Progress</div>
+                </div>
+                <div class="live-stat">
+                    <div class="live-stat-value" id="deviationStatus">--</div>
+                    <div class="live-stat-label">Deviation</div>
+                </div>
+                <div class="live-stat">
+                    <div class="live-stat-value" id="gpsPoints">0</div>
+                    <div class="live-stat-label">GPS Points</div>
+                </div>
+                <div class="live-stat">
+                    <div class="live-stat-value" id="accuracy">--</div>
+                    <div class="live-stat-label">Accuracy (m)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel -->
+        <div class="right-panel">
+            <div class="card">
+                <div class="card-header">⚙️ Test Configuration</div>
+                <div class="test-config">
+                    <div class="form-group">
+                        <label class="form-label">📍 Origin Location</label>
+                        <select class="form-select" id="originLocation" onchange="updateOriginCoords()">
+                            <optgroup label="Pune">
+                                <option value="18.5246,73.8786" selected>Pune Railway Station</option>
+                                <option value="18.5302,73.8474">Shivajinagar, Pune</option>
+                                <option value="18.5167,73.8417">Deccan Gymkhana, Pune</option>
+                                <option value="18.5284,73.8419">FC Road, Pune</option>
+                                <option value="18.5362,73.8939">Koregaon Park, Pune</option>
+                                <option value="18.5912,73.7389">Hinjewadi IT Park, Pune</option>
+                                <option value="18.5679,73.9143">Viman Nagar, Pune</option>
+                                <option value="18.5590,73.8077">Aundh, Pune</option>
+                            </optgroup>
+                            <optgroup label="Mumbai">
+                                <option value="19.0760,72.8777">Mumbai Central</option>
+                                <option value="18.9398,72.8355">Colaba, Mumbai</option>
+                                <option value="19.0176,72.8562">Bandra, Mumbai</option>
+                                <option value="19.1136,72.8697">Andheri, Mumbai</option>
+                            </optgroup>
+                            <optgroup label="Other Cities">
+                                <option value="18.5204,73.8567">Swargate, Pune</option>
+                                <option value="18.7167,73.5333">Lonavala</option>
+                                <option value="19.2183,72.9781">Thane</option>
+                                <option value="18.5204,73.8567">Pune Airport</option>
+                            </optgroup>
+                        </select>
+                        <div class="coord-display" id="originCoordDisplay">
+                            <small>📌 18.5246, 73.8786</small>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">🎯 Destination Location</label>
+                        <select class="form-select" id="destLocation" onchange="updateDestCoords()">
+                            <optgroup label="Mumbai">
+                                <option value="18.9582,72.8321" selected>Mumbai (CST)</option>
+                                <option value="19.0760,72.8777">Mumbai Central</option>
+                                <option value="18.9398,72.8355">Colaba, Mumbai</option>
+                                <option value="19.0176,72.8562">Bandra, Mumbai</option>
+                                <option value="19.1136,72.8697">Andheri, Mumbai</option>
+                                <option value="19.0596,72.8295">Worli, Mumbai</option>
+                                <option value="19.0330,72.8553">Dadar, Mumbai</option>
+                            </optgroup>
+                            <optgroup label="Pune">
+                                <option value="18.5246,73.8786">Pune Railway Station</option>
+                                <option value="18.5302,73.8474">Shivajinagar, Pune</option>
+                                <option value="18.5362,73.8939">Koregaon Park, Pune</option>
+                                <option value="18.5912,73.7389">Hinjewadi IT Park, Pune</option>
+                            </optgroup>
+                            <optgroup label="Other Cities">
+                                <option value="18.7167,73.5333">Lonavala</option>
+                                <option value="19.2183,72.9781">Thane</option>
+                                <option value="19.0330,73.0297">Navi Mumbai</option>
+                                <option value="19.9975,73.7898">Nashik</option>
+                            </optgroup>
+                        </select>
+                        <div class="coord-display" id="destCoordDisplay">
+                            <small>📌 18.9582, 72.8321</small>
+                        </div>
+                    </div>
+                    <div class="form-group route-summary" id="routeSummary">
+                        <div class="route-visual">
+                            <span class="origin-dot">●</span>
+                            <span class="route-line">━━━━━━━➤</span>
+                            <span class="dest-dot">●</span>
+                        </div>
+                        <div class="route-text">
+                            <strong>Pune Railway Station</strong> → <strong>Mumbai (CST)</strong>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Test Scenario</label>
+                        <select class="form-select" id="testScenario">
+                            <option value="normal">🚗 Normal Route Following</option>
+                            <option value="deviation">⚠️ Route Deviation (Wrong Turn)</option>
+                            <option value="stop">🛑 Extended Stop (Traffic/Rest)</option>
+                            <option value="speed_slow">🐢 Slow Traffic</option>
+                            <option value="speed_fast">🏎️ Highway Speed</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Simulation Speed</label>
+                        <select class="form-select" id="simSpeed">
+                            <option value="100">Real-time (1x)</option>
+                            <option value="50" selected>Fast (2x)</option>
+                            <option value="25">Very Fast (4x)</option>
+                            <option value="10">Ultra Fast (10x)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Test Progress -->
+            <div class="card">
+                <div class="card-header">📊 Test Progress</div>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-text">
+                        <span id="progressLabel">Waiting to start...</span>
+                        <span id="progressPct">0%</span>
+                    </div>
+                </div>
+                <div class="results-summary" id="resultsSummary">
+                    <div class="result-item">
+                        <span class="result-name">Journey Start</span>
+                        <span class="result-badge badge-pending" id="badge-start">Pending</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-name">GPS Tracking</span>
+                        <span class="result-badge badge-pending" id="badge-gps">Pending</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-name">Deviation Detection</span>
+                        <span class="result-badge badge-pending" id="badge-deviation">Pending</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-name">Journey Complete</span>
+                        <span class="result-badge badge-pending" id="badge-complete">Pending</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Log -->
+            <div class="card test-log">
+                <div class="card-header">📋 Live Test Log</div>
+                <div class="log-entries" id="logEntries">
+                    <div class="log-entry info">
+                        <span class="log-time">--:--:--</span>
+                        <span class="log-msg">Ready to start test. Click "Run Test" to begin.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = 'http://localhost:8000/api/journey';
+
+        // State
+        let map = null;
+        let routePoints = [];
+        let routePolyline = null;
+        let vehicleMarker = null;
+        let pathTrail = null;
+        let journeyId = null;
+        let isRunning = false;
+        let currentPointIndex = 0;
+        let gpsPointsSent = 0;
+
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([18.75, 73.35], 9);
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '© OpenStreetMap © CARTO',
+                maxZoom: 19
+            }).addTo(map);
+        }
+
+        // Load route data from route.json
+        async function loadRouteData() {
+            try {
+                const response = await fetch('../../../routes/route.json');
+                const data = await response.json();
+
+                if (data.routes && data.routes[0] && data.routes[0].legs) {
+                    const leg = data.routes[0].legs[0];
+
+                    // Extract all path points
+                    routePoints = [];
+                    for (const step of leg.steps) {
+                        if (step.path) {
+                            for (const point of step.path) {
+                                routePoints.push([point.lat, point.lng]);
+                            }
+                        }
+                    }
+
+                    // Update UI with route info
+                    document.getElementById('routeInfo').innerHTML =
+                        `${leg.distance.text} • ${leg.duration.text} • ${routePoints.length} points`;
+
+                    // Draw route on map
+                    if (routePolyline) map.removeLayer(routePolyline);
+
+                    routePolyline = L.polyline(routePoints, {
+                        color: '#3b82f6',
+                        weight: 4,
+                        opacity: 0.6
+                    }).addTo(map);
+
+                    // Add origin marker
+                    const originIcon = L.divIcon({
+                        className: '',
+                        html: '<div style="background:#22c55e;width:14px;height:14px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);"></div>',
+                        iconSize: [14, 14],
+                        iconAnchor: [7, 7]
+                    });
+                    L.marker(routePoints[0], { icon: originIcon })
+                        .addTo(map)
+                        .bindPopup(`<b>Origin</b><br>${leg.start_address}`);
+
+                    // Add destination marker
+                    const destIcon = L.divIcon({
+                        className: '',
+                        html: '<div style="background:#ef4444;width:14px;height:14px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);"></div>',
+                        iconSize: [14, 14],
+                        iconAnchor: [7, 7]
+                    });
+                    L.marker(routePoints[routePoints.length - 1], { icon: destIcon })
+                        .addTo(map)
+                        .bindPopup(`<b>Destination</b><br>${leg.end_address}`);
+
+                    map.fitBounds(routePolyline.getBounds(), { padding: [30, 30] });
+
+                    addLog('Route loaded: ' + leg.distance.text + ', ' + routePoints.length + ' GPS points', 'success');
+                }
+            } catch (error) {
+                addLog('Error loading route: ' + error.message, 'error');
+            }
+        }
+
+        // Add log entry
+        function addLog(message, type = 'info') {
+            const logEntries = document.getElementById('logEntries');
+            const now = new Date();
+            const time = now.toLocaleTimeString('en-US', { hour12: false });
+
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerHTML = `
+                <span class="log-time">${time}</span>
+                <span class="log-msg">${message}</span>
+            `;
+
+            logEntries.appendChild(entry);
+            logEntries.scrollTop = logEntries.scrollHeight;
+        }
+
+        // Update status indicator
+        function updateStatus(status, text) {
+            const statusEl = document.getElementById('globalStatus');
+            const dot = statusEl.querySelector('.pulse-dot');
+            const span = statusEl.querySelector('span');
+
+            statusEl.className = `status-indicator status-${status}`;
+            dot.className = `pulse-dot ${status}`;
+            span.textContent = text;
+        }
+
+        // Update badge
+        function updateBadge(id, status, text) {
+            const badge = document.getElementById(`badge-${id}`);
+            badge.className = `result-badge badge-${status}`;
+            badge.textContent = text;
+        }
+
+        // Create/update vehicle marker
+        function updateVehicleMarker(lat, lng, isDeviated = false) {
+            const iconHtml = `<div class="vehicle-marker ${isDeviated ? 'deviation-marker' : ''}"></div>`;
+
+            if (vehicleMarker) {
+                vehicleMarker.setLatLng([lat, lng]);
+                vehicleMarker.setIcon(L.divIcon({
+                    className: '',
+                    html: iconHtml,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                }));
+            } else {
+                vehicleMarker = L.marker([lat, lng], {
+                    icon: L.divIcon({
+                        className: '',
+                        html: iconHtml,
+                        iconSize: [24, 24],
+                        iconAnchor: [12, 12]
+                    })
+                }).addTo(map);
+            }
+
+            // Center map on vehicle
+            map.panTo([lat, lng], { animate: true });
+        }
+
+        // Location dropdown handlers
+        function getSelectedCoords(selectId) {
+            const select = document.getElementById(selectId);
+            const [lat, lng] = select.value.split(',').map(parseFloat);
+            return { lat, lng };
+        }
+
+        function getSelectedLocationName(selectId) {
+            const select = document.getElementById(selectId);
+            return select.options[select.selectedIndex].text;
+        }
+
+        function updateOriginCoords() {
+            const coords = getSelectedCoords('originLocation');
+            document.getElementById('originCoordDisplay').innerHTML =
+                `<small>📌 ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}</small>`;
+            updateRouteSummary();
+        }
+
+        function updateDestCoords() {
+            const coords = getSelectedCoords('destLocation');
+            document.getElementById('destCoordDisplay').innerHTML =
+                `<small>📌 ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}</small>`;
+            updateRouteSummary();
+        }
+
+        function updateRouteSummary() {
+            const originName = getSelectedLocationName('originLocation');
+            const destName = getSelectedLocationName('destLocation');
+            document.querySelector('.route-text').innerHTML =
+                `<strong>${originName}</strong> → <strong>${destName}</strong>`;
+        }
+
+        // Start journey via API
+        async function startJourney() {
+            const origin = getSelectedCoords('originLocation');
+            const dest = getSelectedCoords('destLocation');
+            const originName = getSelectedLocationName('originLocation');
+            const destName = getSelectedLocationName('destLocation');
+
+            addLog(`Route: ${originName} → ${destName}`, 'info');
+
+            try {
+                const response = await fetch(`${API_BASE}/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        origin: origin,
+                        destination: dest,
+                        travel_mode: 'driving'
+                    })
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+                journeyId = data.journey_id;
+
+                addLog(`Journey started: ${journeyId.substring(0, 8)}...`, 'success');
+                updateBadge('start', 'pass', 'Started');
+
+                return true;
+            } catch (error) {
+                addLog(`Failed to start journey: ${error.message}`, 'error');
+                updateBadge('start', 'fail', 'Failed');
+                return false;
+            }
+        }
+
+        // Submit GPS point
+        async function submitGpsPoint(lat, lng, speed, bearing, accuracy) {
+            if (!journeyId || !isRunning) return null;
+
+            try {
+                const response = await fetch(`${API_BASE}/${journeyId}/gps`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        lat: lat,
+                        lng: lng,
+                        timestamp: new Date().toISOString(),
+                        speed: speed,
+                        bearing: bearing,
+                        accuracy: accuracy
+                    })
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                gpsPointsSent++;
+                return await response.json();
+            } catch (error) {
+                addLog(`GPS submit error: ${error.message}`, 'warning');
+                return null;
+            }
+        }
+
+        // Get journey status
+        async function getJourneyStatus() {
+            if (!journeyId) return null;
+
+            try {
+                const response = await fetch(`${API_BASE}/${journeyId}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return await response.json();
+            } catch (error) {
+                return null;
+            }
+        }
+
+        // Complete journey
+        async function completeJourney() {
+            if (!journeyId) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/${journeyId}/complete`, {
+                    method: 'PUT'
+                });
+
+                if (response.ok) {
+                    addLog('Journey completed successfully!', 'success');
+                    updateBadge('complete', 'pass', 'Completed');
+                }
+            } catch (error) {
+                addLog(`Complete error: ${error.message}`, 'error');
+                updateBadge('complete', 'fail', 'Error');
+            }
+        }
+
+        // Generate modified points based on scenario
+        function getTestPoints() {
+            const scenario = document.getElementById('testScenario').value;
+            let testPoints = [...routePoints];
+
+            // Sample points for faster simulation
+            const sampleRate = Math.max(1, Math.floor(routePoints.length / 100));
+            testPoints = testPoints.filter((_, i) => i % sampleRate === 0);
+
+            if (scenario === 'deviation') {
+                // Add deviation in middle of route
+                const deviationStart = Math.floor(testPoints.length * 0.3);
+                const deviationEnd = Math.floor(testPoints.length * 0.5);
+
+                for (let i = deviationStart; i < deviationEnd; i++) {
+                    const factor = Math.sin((i - deviationStart) / (deviationEnd - deviationStart) * Math.PI);
+                    testPoints[i] = [
+                        testPoints[i][0] + 0.03 * factor,
+                        testPoints[i][1] + 0.04 * factor
+                    ];
+                }
+            }
+
+            return testPoints;
+        }
+
+        // Get speed based on scenario
+        function getSpeed() {
+            const scenario = document.getElementById('testScenario').value;
+
+            switch (scenario) {
+                case 'stop': return Math.random() < 0.3 ? 0.5 : 50 + Math.random() * 20;
+                case 'speed_slow': return 15 + Math.random() * 15;
+                case 'speed_fast': return 90 + Math.random() * 30;
+                default: return 50 + Math.random() * 30;
+            }
+        }
+
+        // Main test loop
+        async function runTestLoop() {
+            const testPoints = getTestPoints();
+            const simSpeed = parseInt(document.getElementById('simSpeed').value);
+            const scenario = document.getElementById('testScenario').value;
+
+            updateBadge('gps', 'running', 'Tracking...');
+
+            // Trail for path taken
+            const trailCoords = [];
+            if (pathTrail) map.removeLayer(pathTrail);
+            pathTrail = L.polyline([], {
+                color: '#22c55e',
+                weight: 3,
+                opacity: 0.8
+            }).addTo(map);
+
+            for (let i = 0; i < testPoints.length && isRunning; i++) {
+                const [lat, lng] = testPoints[i];
+                const speed = getSpeed();
+                const accuracy = 5 + Math.random() * 15;
+
+                // Calculate bearing to next point
+                let bearing = 0;
+                if (i < testPoints.length - 1) {
+                    const [nextLat, nextLng] = testPoints[i + 1];
+                    bearing = Math.atan2(nextLng - lng, nextLat - lat) * 180 / Math.PI;
+                    bearing = (bearing + 360) % 360;
+                }
+
+                // Submit GPS point to API
+                await submitGpsPoint(lat, lng, speed, bearing, accuracy);
+
+                // Update trail
+                trailCoords.push([lat, lng]);
+                pathTrail.setLatLngs(trailCoords);
+
+                // Check if this is a deviation point
+                const isDeviated = scenario === 'deviation' &&
+                    i >= testPoints.length * 0.3 && i <= testPoints.length * 0.5;
+
+                // Update vehicle marker
+                updateVehicleMarker(lat, lng, isDeviated);
+
+                // Update live stats
+                const progress = Math.round((i / testPoints.length) * 100);
+                document.getElementById('currentSpeed').textContent = Math.round(speed);
+                document.getElementById('currentProgress').textContent = progress + '%';
+                document.getElementById('gpsPoints').textContent = gpsPointsSent;
+                document.getElementById('accuracy').textContent = Math.round(accuracy);
+
+                document.getElementById('progressFill').style.width = progress + '%';
+                document.getElementById('progressPct').textContent = progress + '%';
+                document.getElementById('progressLabel').textContent = `Point ${i + 1} of ${testPoints.length}`;
+
+                // Get status every 5 points
+                if (i % 5 === 0) {
+                    const status = await getJourneyStatus();
+                    if (status && status.deviation_status) {
+                        const dev = status.deviation_status;
+                        document.getElementById('deviationStatus').textContent = dev.spatial || '--';
+
+                        if (dev.spatial === 'OFF_ROUTE' || dev.spatial === 'NEAR_ROUTE') {
+                            updateBadge('deviation', 'running', 'Detected!');
+                            addLog(`Deviation: ${dev.spatial} | Severity: ${dev.severity}`, 'warning');
+                        }
+                    }
+                }
+
+                // Delay between points
+                await new Promise(resolve => setTimeout(resolve, simSpeed));
+            }
+
+            if (isRunning) {
+                updateBadge('gps', 'pass', `${gpsPointsSent} sent`);
+                updateBadge('deviation', 'pass', 'Monitored');
+
+                // Complete the journey
+                await completeJourney();
+            }
+        }
+
+        // Start test
+        async function startTest() {
+            if (isRunning) return;
+            if (routePoints.length === 0) {
+                addLog('No route data loaded. Please wait...', 'error');
+                return;
+            }
+
+            isRunning = true;
+            gpsPointsSent = 0;
+            journeyId = null;
+
+            // Update UI
+            document.getElementById('runTestBtn').style.display = 'none';
+            document.getElementById('stopTestBtn').style.display = 'flex';
+            updateStatus('running', 'Running Test...');
+
+            // Clear previous trail
+            if (pathTrail) map.removeLayer(pathTrail);
+            if (vehicleMarker) map.removeLayer(vehicleMarker);
+            vehicleMarker = null;
+
+            // Reset badges
+            ['start', 'gps', 'deviation', 'complete'].forEach(id => {
+                updateBadge(id, 'pending', 'Pending');
+            });
+
+            addLog('Starting E2E test...', 'info');
+            addLog(`Scenario: ${document.getElementById('testScenario').selectedOptions[0].text}`, 'info');
+
+            // Start journey
+            const started = await startJourney();
+
+            if (started) {
+                await runTestLoop();
+            }
+
+            // Test complete
+            isRunning = false;
+            document.getElementById('runTestBtn').style.display = 'flex';
+            document.getElementById('stopTestBtn').style.display = 'none';
+            updateStatus('success', 'Test Complete');
+
+            addLog('Test finished!', 'success');
+        }
+
+        // Stop test
+        function stopTest() {
+            isRunning = false;
+            updateStatus('idle', 'Stopped');
+            addLog('Test stopped by user', 'warning');
+
+            document.getElementById('runTestBtn').style.display = 'flex';
+            document.getElementById('stopTestBtn').style.display = 'none';
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initMap();
+            loadRouteData();
+        });
+    </script>
+</body>
+
+</html>

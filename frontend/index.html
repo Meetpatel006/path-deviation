@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS Path Deviation Detection System</title>
+
+    <!-- Mapbox GL JS -->
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>GPS Path Deviation Detection</h1>
+            <div class="connection-status">
+                <span id="connection-indicator" class="indicator disconnected"></span>
+                <span id="connection-text">Disconnected</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Control Panel -->
+            <div class="control-panel">
+                <!-- Journey Setup -->
+                <div class="panel-section" id="journey-setup">
+                    <h2>Start Journey</h2>
+                    <form id="start-journey-form">
+                        <div class="form-group">
+                            <label>Origin <small>(Search by name or coordinates)</small></label>
+                            <div class="location-search-wrapper">
+                                <div class="input-with-button">
+                                    <input type="text" id="origin" placeholder="Delhi, India or 18.5246, 73.8786"
+                                        required autocomplete="off">
+                                    <button type="button" class="btn-icon" id="pick-origin-btn"
+                                        title="Pick on map">📍</button>
+                                    <button type="button" class="btn-icon" id="use-current-location-btn"
+                                        title="Use current location">📱</button>
+                                </div>
+                                <div id="origin-suggestions" class="autocomplete-dropdown" style="display: none;"></div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Destination <small>(Search by name or coordinates)</small></label>
+                            <div class="location-search-wrapper">
+                                <div class="input-with-button">
+                                    <input type="text" id="destination" placeholder="Mumbai, India or 18.9582, 72.8321"
+                                        required autocomplete="off">
+                                    <button type="button" class="btn-icon" id="pick-destination-btn"
+                                        title="Pick on map">📍</button>
+                                </div>
+                                <div id="destination-suggestions" class="autocomplete-dropdown" style="display: none;">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Travel Mode</label>
+                            <select id="travel-mode">
+                                <option value="driving">Driving</option>
+                                <option value="walking">Walking</option>
+                                <option value="cycling">Cycling</option>
+                            </select>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">Start Journey</button>
+                    </form>
+                </div>
+
+                <!-- Journey Status -->
+                <div class="panel-section" id="journey-status" style="display: none;">
+                    <h2>Journey Status</h2>
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <span class="label">Journey ID:</span>
+                            <span id="journey-id" class="value">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Current Location:</span>
+                            <span id="current-location" class="value">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Current Speed:</span>
+                            <span id="current-speed" class="value">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Distance Traveled:</span>
+                            <span id="distance-traveled" class="value">0 m</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">GPS Accuracy:</span>
+                            <span id="gps-accuracy" class="value">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Spatial Status:</span>
+                            <span id="spatial-status" class="value badge">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Temporal Status:</span>
+                            <span id="temporal-status" class="value badge">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Directional:</span>
+                            <span id="directional-status" class="value badge">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Severity:</span>
+                            <span id="severity" class="value badge">-</span>
+                        </div>
+                    </div>
+
+                    <!-- Route Probabilities -->
+                    <div class="route-probabilities">
+                        <h3>Route Probabilities</h3>
+                        <div id="route-probs-container"></div>
+                    </div>
+
+                    <button id="complete-journey-btn" class="btn btn-secondary">Complete Journey</button>
+                </div>
+
+                <!-- GPS Simulator -->
+                <div class="panel-section" id="gps-simulator" style="display: none;">
+                    <h2>GPS Tracking</h2>
+
+                    <!-- Journey Status Message -->
+                    <div class="panel-section">
+                        <div class="status-item">
+                            <span class="label">Journey Status:</span>
+                            <span class="value" id="journey-status-text">Created (Not Started)</span>
+                        </div>
+                    </div>
+
+                    <!-- Real GPS Tracking -->
+                    <div class="tracking-mode">
+                        <h3>Real-Time GPS</h3>
+                        <div class="tracking-controls">
+                            <button id="start-real-gps-btn" class="btn btn-primary">Start Real GPS</button>
+                            <button id="stop-real-gps-btn" class="btn btn-secondary" disabled>Stop Real GPS</button>
+                        </div>
+                        <div class="gps-info">
+                            <p><small>Uses device GPS for real tracking</small></p>
+                            <p class="gps-accuracy">Accuracy: <span id="gps-accuracy">-</span></p>
+                        </div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <!-- Simulated GPS -->
+                    <div class="tracking-mode">
+                        <h3>Simulated GPS</h3>
+                        <div class="simulator-controls">
+                            <div class="form-group">
+                                <label>Simulation Speed</label>
+                                <select id="sim-speed-multiplier">
+                                    <option value="1">1x (Real-time)</option>
+                                    <option value="5">5x (Fast)</option>
+                                    <option value="10" selected>10x (Very Fast)</option>
+                                    <option value="50">50x (Ultra Fast)</option>
+                                    <option value="100">100x (Maximum)</option>
+                                </select>
+                            </div>
+                            <button id="start-sim-btn" class="btn btn-primary">Start Simulation</button>
+                            <button id="stop-sim-btn" class="btn btn-secondary" disabled>Stop Simulation</button>
+                        </div>
+                    </div>
+
+                    <div class="sim-stats">
+                        <p>Points sent: <span id="points-sent">0</span></p>
+                        <p>Current batch: <span id="current-batch">0</span></p>
+                    </div>
+
+                    <!-- Test Scenario -->
+                    <div class="panel-section" id="test-scenario" style="display: none;">
+                        <h2>Test Scenario</h2>
+                        <div class="form-group">
+                            <label>Test Scenario</label>
+                            <select id="test-scenario-select" class="form-select">
+                                <option value="normal">🚗 Normal Route Following</option>
+                                <option value="deviation">⚠️ Route Deviation (Wrong Turn)</option>
+                                <option value="stop">🛑 Extended Stop (Traffic/Rest)</option>
+                                <option value="speed_slow">🐢 Slow Traffic</option>
+                                <option value="speed_fast">🏎️ Highway Speed</option>
+                            </select>
+                        </div>
+                        <button id="apply-scenario-btn" class="btn btn-primary">Apply Scenario</button>
+                    </div>
+                </div>
+
+                <!-- Deviation Alerts -->
+                <div class="panel-section">
+                    <h2>Deviation Alerts</h2>
+                    <div id="alerts-container" class="alerts">
+                        <p class="no-alerts">No deviations detected</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Map Container -->
+            <div id="map">
+                <div id="map-loading" class="map-loading">
+                    <div class="spinner"></div>
+                    <p>Loading map...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/geocoding.js"></script>
+    <script src="js/map.js"></script>
+    <script src="js/websocket-client.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/real-gps-tracker.js"></script>
+    <script src="js/gps-simulator.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>
