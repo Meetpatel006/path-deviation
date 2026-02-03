@@ -183,7 +183,7 @@ class JourneyService:
                 journey_id,
                 gps_point.lat,
                 gps_point.lng,
-                gps_point.timestamp.isoformat(),
+                gps_point.timestamp,
                 gps_point.speed,
                 gps_point.bearing,
                 gps_point.accuracy
@@ -260,7 +260,7 @@ class JourneyService:
                     UPDATE journeys 
                     SET status = ?, end_time = ? 
                     WHERE id = ?
-                """, (status, end_time.isoformat(), journey_id))
+                """, (status, end_time, journey_id))
             else:
                 await execute_update("""
                     UPDATE journeys 
@@ -308,7 +308,7 @@ class JourneyService:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 journey_id,
-                timestamp.isoformat(),
+                timestamp,
                 severity,
                 spatial_status,
                 temporal_status,
