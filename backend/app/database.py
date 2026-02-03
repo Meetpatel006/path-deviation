@@ -47,6 +47,23 @@ async def close_pg_pool():
         logger.info("PostgreSQL connection pool closed")
 
 
+def convert_query_for_postgres(query: str, params: tuple) -> str:
+    """
+    Convert SQL query with ? placeholders to PostgreSQL $1, $2, etc.
+    
+    Args:
+        query: SQL query with ? placeholders
+        params: Query parameters tuple
+    
+    Returns:
+        Query string with $1, $2, etc. placeholders
+    """
+    pg_query = query
+    for i in range(1, len(params) + 1):
+        pg_query = pg_query.replace('?', f'${i}', 1)
+    return pg_query
+
+
 async def init_db() -> None:
     """
     Initialize database with schema

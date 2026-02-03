@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 
 from app.models.schemas import LocationPoint, Route, GPSPoint
-from app.database import get_db, execute_query, execute_update
+from app.database import get_db, execute_query, execute_update, is_postgres, convert_query_for_postgres
 from app.utils.logger import logger
 
 
@@ -39,40 +39,55 @@ class JourneyService:
         try:
             async with get_db() as conn:
                 # Insert journey
-                await conn.execute("""
+                journey_query = """
                     INSERT INTO journeys 
                     (id, origin_lat, origin_lng, destination_lat, destination_lng, 
                      travel_mode, start_time, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
+                """
+                journey_params = (
                     journey_id,
                     origin.lat, origin.lng,
                     destination.lat, destination.lng,
                     travel_mode,
-                    start_time.isoformat(),
+                    start_time,
                     'active'
-                ))
+                )
+                
+                if is_postgres():
+                    journey_query = convert_query_for_postgres(journey_query, journey_params)
+                    await conn.execute(journey_query, *journey_params)
+                else:
+                    await conn.execute(journey_query, journey_params)
                 
                 # Insert routes
                 for route in routes:
                     # Convert geometry to JSON string
                     geometry_json = json.dumps(route.geometry)
                     
-                    await conn.execute("""
+                    route_query = """
                         INSERT INTO routes 
                         (journey_id, route_index, geometry, distance_meters, 
                          duration_seconds, summary)
                         VALUES (?, ?, ?, ?, ?, ?)
-                    """, (
+                    """
+                    route_params = (
                         journey_id,
                         route.route_index,
                         geometry_json,
                         route.distance_meters,
                         route.duration_seconds,
                         route.summary
-                    ))
+                    )
+                    
+                    if is_postgres():
+                        route_query = convert_query_for_postgres(route_query, route_params)
+                        await conn.execute(route_query, *route_params)
+                    else:
+                        await conn.execute(route_query, route_params)
                 
-                await conn.commit()
+                if not is_postgres():
+                    await conn.commit()
                 
             logger.info(
                 f"Created journey {journey_id} with {len(routes)} routes "
