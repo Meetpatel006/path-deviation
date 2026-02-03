@@ -35,10 +35,17 @@ class Settings(BaseSettings):
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000
+
+    # Optional Upstash Redis (REST) settings
+    UPSTASH_REDIS_REST_URL: Optional[str] = None
+    UPSTASH_REDIS_REST_TOKEN: Optional[str] = None
     
     class Config:
         env_file = ".env"
         case_sensitive = True
+        # Allow extra environment variables (e.g., UPSTASH_* from CI or hosting)
+        extra = "ignore"
+        env_file_encoding = "utf-8"
 
 
 # Global settings instance

@@ -12,6 +12,7 @@ from app.database import init_db
 from app.utils.logger import logger
 from app.api import routes
 from app.api import websocket as websocket_routes
+from app.services.redis_client import get_redis, close_redis
 
 
 @asynccontextmanager
@@ -36,6 +37,12 @@ async def lifespan(app: FastAPI):
         logger.warning("Mapbox API key not configured! Please set MAPBOX_API_KEY in .env file")
     else:
         logger.info("Mapbox API key configured")
+
+    # Initialize Redis (Upstash) if configured
+    try:
+        await get_redis()
+    except Exception as e:
+        logger.error(f"Failed to initialize Upstash Redis: {e}", exc_info=True)
     
     logger.info("Application started successfully")
     
@@ -43,6 +50,7 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down application...")
+    await close_redis()
 
 
 # Create FastAPI app
@@ -116,10 +124,21 @@ app.include_router(websocket_routes.router)
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    redis_status = "disabled"
+    try:
+        redis = await get_redis()
+        if redis is not None:
+            redis_ok = await redis.ping()
+            redis_status = "connected" if redis_ok else "disconnected"
+    except Exception as e:
+        logger.error(f"Redis health check failed: {e}", exc_info=True)
+        redis_status = "disconnected"
+    
     return {
         "status": "healthy",
         "version": "1.0.0",
-        "database": "connected"
+        "database": "connected",
+        "redis": redis_status
     }
 
 

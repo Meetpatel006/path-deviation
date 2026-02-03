@@ -10,6 +10,8 @@ Orchestrates the complete GPS tracking pipeline:
 6. Stores deviation events
 7. Broadcasts updates via WebSocket
 """
+import asyncio
+import json
 from typing import List, Optional, Dict
 from datetime import datetime
 
@@ -19,10 +21,10 @@ from app.services.map_matching import map_matching_service
 from app.services.deviation_detector import DeviationDetector
 from app.services.route_tracker import RouteTracker
 from app.services.journey_service import journey_service
+from app.services.journey_store import journey_store
 from app.services.websocket_manager import websocket_manager
 from app.database import execute_update
 from app.utils.logger import logger
-import json
 
 
 class TrackingService:
@@ -41,7 +43,70 @@ class TrackingService:
         # Initialize GPS buffer manager with batch callback
         self.buffer_manager = GPSBufferManager(self._process_batch)
         
-        logger.info("Initialized Unified Tracking Service")
+        logger.info("Initialized Unified Tracking Service with Redis backing")
+
+    async def _load_journey_from_store(self, journey_id: str) -> bool:
+        """
+        Load journey state from Redis into local cache
+        
+        Args:
+            journey_id: Journey UUID
+        
+        Returns:
+            True if loaded, else False
+        """
+        if journey_id in self.active_journeys:
+            return True
+        
+        state = await journey_store.get_journey_state(journey_id)
+        if not state:
+            return False
+        
+        routes = [Route(**r) for r in state.get("routes", [])]
+        start_time = (
+            datetime.fromisoformat(state["start_time"])
+            if state.get("start_time")
+            else datetime.now()
+        )
+        
+        last_deviation = state.get("last_deviation")
+        if last_deviation and last_deviation.get("timestamp"):
+            try:
+                last_deviation["timestamp"] = datetime.fromisoformat(last_deviation["timestamp"])
+            except Exception:
+                pass
+        
+        self.active_journeys[journey_id] = {
+            "routes": routes,
+            "travel_mode": state.get("travel_mode"),
+            "origin": tuple(state.get("origin", [0, 0])),
+            "destination": tuple(state.get("destination", [0, 0])),
+            "start_time": start_time,
+            "detector": DeviationDetector(routes),
+            "tracker": RouteTracker(routes),
+            "total_points_received": state.get("total_points_received", 0),
+            "batches_processed": state.get("batches_processed", 0),
+            "last_deviation": last_deviation
+        }
+        
+        logger.info(f"Loaded journey {journey_id} from Redis")
+        return True
+
+    def _schedule_save(self, journey_id: str, state: dict) -> None:
+        """
+        Schedule an async save of journey state to Redis
+        
+        Args:
+            journey_id: Journey UUID
+            state: Tracking state dict
+        """
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(journey_store.save_journey_state(journey_id, state))
+        except RuntimeError:
+            asyncio.run(journey_store.save_journey_state(journey_id, state))
+        except Exception as e:
+            logger.error(f"Failed to schedule journey save: {e}", exc_info=True)
     
     def start_journey_tracking(
         self,
@@ -66,7 +131,7 @@ class TrackingService:
             return
         
         # Initialize tracking state
-        self.active_journeys[journey_id] = {
+        state = {
             "routes": routes,
             "travel_mode": travel_mode,
             "origin": origin,
@@ -78,6 +143,9 @@ class TrackingService:
             "batches_processed": 0,
             "last_deviation": None
         }
+        
+        self.active_journeys[journey_id] = state
+        self._schedule_save(journey_id, state)
         
         logger.info(
             f"Started tracking for journey {journey_id} "
@@ -96,14 +164,17 @@ class TrackingService:
             Dictionary with processing status
         """
         if journey_id not in self.active_journeys:
-            logger.warning(f"Journey {journey_id} not being tracked")
-            return {
-                "status": "error",
-                "message": "Journey not being tracked"
-            }
+            loaded = await self._load_journey_from_store(journey_id)
+            if not loaded:
+                logger.warning(f"Journey {journey_id} not being tracked")
+                return {
+                    "status": "error",
+                    "message": "Journey not being tracked"
+                }
         
         # Update point count
         self.active_journeys[journey_id]["total_points_received"] += 1
+        self._schedule_save(journey_id, self.active_journeys[journey_id])
         
         # Broadcast GPS update immediately for real-time UI feedback
         await websocket_manager.broadcast_gps_update(journey_id, {
@@ -133,8 +204,10 @@ class TrackingService:
             gps_points: Batch of GPS points
         """
         if journey_id not in self.active_journeys:
-            logger.error(f"Cannot process batch: journey {journey_id} not tracked")
-            return
+            loaded = await self._load_journey_from_store(journey_id)
+            if not loaded:
+                logger.error(f"Cannot process batch: journey {journey_id} not tracked")
+                return
         
         journey_state = self.active_journeys[journey_id]
         journey_state["batches_processed"] += 1
@@ -260,6 +333,8 @@ class TrackingService:
                 "timestamp": last_point.timestamp
             }
             
+            await journey_store.save_journey_state(journey_id, journey_state)
+            
             # Step 5: Broadcast via WebSocket
             await websocket_manager.broadcast_deviation_update(journey_id, deviation_event)
             
@@ -318,8 +393,11 @@ class TrackingService:
             journey_id: Journey UUID
         """
         if journey_id not in self.active_journeys:
-            logger.warning(f"Journey {journey_id} not being tracked")
-            return
+            loaded = await self._load_journey_from_store(journey_id)
+            if not loaded:
+                logger.warning(f"Journey {journey_id} not being tracked")
+                await journey_store.delete_journey_state(journey_id)
+                return
         
         # Flush any remaining GPS points
         await self.buffer_manager.flush_buffer(journey_id)
@@ -335,6 +413,7 @@ class TrackingService:
         # Cleanup
         self.buffer_manager.remove_buffer(journey_id)
         del self.active_journeys[journey_id]
+        await journey_store.delete_journey_state(journey_id)
     
     def get_journey_stats(self, journey_id: str) -> Optional[dict]:
         """
