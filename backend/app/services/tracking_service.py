@@ -259,7 +259,10 @@ class TrackingService:
                 logger.error(f"Journey {journey_id} not found in database")
                 return
             
-            start_time = datetime.fromisoformat(journey_data["start_time"])
+            # Handle start_time - could be string (PostgreSQL) or datetime (SQLite)
+            start_time = journey_data["start_time"]
+            if isinstance(start_time, str):
+                start_time = datetime.fromisoformat(start_time)
             current_time = last_point.timestamp
             # Ensure both datetimes have consistent timezone handling
             if start_time.tzinfo is None and current_time.tzinfo is not None:
@@ -363,6 +366,12 @@ class TrackingService:
             event: Deviation event data
         """
         try:
+            timestamp = event["timestamp"]
+            if isinstance(timestamp, str):
+                timestamp = datetime.fromisoformat(timestamp)
+            if timestamp.tzinfo is not None:
+                timestamp = timestamp.replace(tzinfo=None)
+
             await execute_update("""
                 INSERT INTO deviation_events 
                 (journey_id, timestamp, severity, spatial_status, temporal_status, 
@@ -370,7 +379,7 @@ class TrackingService:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 event["journey_id"],
-                event["timestamp"],
+                timestamp,
                 event["severity"],
                 event["spatial_status"],
                 event["temporal_status"],

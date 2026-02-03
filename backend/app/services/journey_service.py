@@ -36,6 +36,10 @@ class JourneyService:
         journey_id = str(uuid.uuid4())
         start_time = datetime.now()
         
+        # Convert timezone-aware to timezone-naive UTC for PostgreSQL TIMESTAMP
+        if start_time.tzinfo is not None:
+            start_time = start_time.replace(tzinfo=None)
+        
         try:
             async with get_db() as conn:
                 # Insert journey
@@ -175,6 +179,11 @@ class JourneyService:
             gps_point: GPS point data
         """
         try:
+            # Convert timezone-aware to timezone-naive UTC for PostgreSQL TIMESTAMP
+            timestamp = gps_point.timestamp
+            if timestamp.tzinfo is not None:
+                timestamp = timestamp.replace(tzinfo=None)
+            
             await execute_update("""
                 INSERT INTO gps_points 
                 (journey_id, lat, lng, timestamp, speed, bearing, accuracy)
@@ -183,7 +192,7 @@ class JourneyService:
                 journey_id,
                 gps_point.lat,
                 gps_point.lng,
-                gps_point.timestamp,
+                timestamp,
                 gps_point.speed,
                 gps_point.bearing,
                 gps_point.accuracy
@@ -256,11 +265,16 @@ class JourneyService:
         """
         try:
             if end_time:
+                # Convert timezone-aware to timezone-naive UTC for PostgreSQL TIMESTAMP
+                end_time_naive = end_time
+                if end_time_naive.tzinfo is not None:
+                    end_time_naive = end_time_naive.replace(tzinfo=None)
+                
                 await execute_update("""
                     UPDATE journeys 
                     SET status = ?, end_time = ? 
                     WHERE id = ?
-                """, (status, end_time, journey_id))
+                """, (status, end_time_naive, journey_id))
             else:
                 await execute_update("""
                     UPDATE journeys 
@@ -301,6 +315,11 @@ class JourneyService:
             route_probabilities: Route probabilities dictionary
         """
         try:
+            # Convert timezone-aware to timezone-naive UTC for PostgreSQL TIMESTAMP
+            timestamp_naive = timestamp
+            if timestamp_naive.tzinfo is not None:
+                timestamp_naive = timestamp_naive.replace(tzinfo=None)
+            
             await execute_update("""
                 INSERT INTO deviation_events 
                 (journey_id, timestamp, severity, spatial_status, temporal_status,
@@ -308,7 +327,7 @@ class JourneyService:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 journey_id,
-                timestamp,
+                timestamp_naive,
                 severity,
                 spatial_status,
                 temporal_status,
