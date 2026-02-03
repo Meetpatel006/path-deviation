@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 import time
 
 from app.config import settings
-from app.database import init_db
+from app.database import init_db, close_pg_pool
 from app.utils.logger import logger
 from app.api import routes
 from app.api import websocket as websocket_routes
@@ -51,6 +51,8 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down application...")
     await close_redis()
+    await close_pg_pool()  # Close PostgreSQL connection pool
+    logger.info("Application shutdown complete")
 
 
 # Create FastAPI app

@@ -10,11 +10,12 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# Install build dependencies for shapely (GEOS) and numpy
+# Install build dependencies for shapely (GEOS), numpy, and PostgreSQL
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     libgeos-dev \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and build wheels
@@ -28,9 +29,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install runtime dependencies only (GEOS C library for shapely)
+# Install runtime dependencies (GEOS for shapely, PostgreSQL client library)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgeos-c1v5 \
+    libpq5 \
     curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --shell /bin/bash appuser

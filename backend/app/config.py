@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     MAPBOX_API_KEY: str
     
     # Database
-    DATABASE_PATH: str = "path_deviation.db"
+    DATABASE_PATH: str = "path_deviation.db"  # For SQLite (local dev)
+    DATABASE_URL: Optional[str] = None  # For PostgreSQL (production), e.g., postgresql://user:pass@host:5432/dbname
     
     # Logging
     LOG_LEVEL: str = "DEBUG"

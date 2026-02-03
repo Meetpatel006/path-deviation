@@ -1,8 +1,8 @@
 // Configuration
 const CONFIG = {
     // API endpoints
-    API_BASE_URL: 'http://localhost:8000',
-    WS_BASE_URL: 'ws://localhost:8000',
+    API_BASE_URL: 'https://path-deviation.onrender.com',
+    WS_BASE_URL: 'wss://path-deviation.onrender.com',
     
     // Mapbox public access token (must start with "pk.")
     // Do NOT use secret/server tokens ("sk.") in the browser – they will fail and leak credentials.
