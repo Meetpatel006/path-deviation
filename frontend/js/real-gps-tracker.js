@@ -11,6 +11,7 @@ class RealGPSTracker {
         this.gpsTrail = [];
         this.updateInterval = 2000; // Minimum time between updates (ms)
         this.lastUpdateTime = 0;
+        this.isSending = false;
     }
 
     /**
@@ -54,6 +55,9 @@ class RealGPSTracker {
         }
 
         console.log('[RealGPS] Starting real-time GPS tracking...');
+        if (window.gpsSimulator && window.gpsSimulator.isRunning) {
+            gpsSimulator.stop('Switched to real GPS tracking');
+        }
         this.isTracking = true;
         this.updateTrackerUI();
         this.updateJourneyStatus('Active (Real GPS)');
@@ -86,6 +90,7 @@ class RealGPSTracker {
             navigator.geolocation.clearWatch(this.watchId);
             this.watchId = null;
         }
+        this.isSending = false;
 
         this.updateTrackerUI();
         this.updateJourneyStatus('Created (Not Started)');
@@ -118,6 +123,11 @@ class RealGPSTracker {
 
         // Update accuracy display
         document.getElementById('gps-accuracy').textContent = `${accuracy.toFixed(0)} m`;
+        const maxAccuracy = CONFIG.MAX_GPS_ACCURACY_METERS || 35;
+        if (accuracy > maxAccuracy) {
+            console.log(`[RealGPS] Skipping low-quality fix (${accuracy.toFixed(0)}m)`);
+            return;
+        }
 
         // Throttle updates based on interval
         const now = Date.now();
@@ -191,11 +201,21 @@ class RealGPSTracker {
 
         // Update map visualization
         if (window.mapManager) {
-            mapManager.updateCurrentPosition(latitude, longitude);
             mapManager.updateGPSTrail(this.gpsTrail);
         }
 
         // Send to backend
+        if (this.isSending) {
+            console.log('[RealGPS] Previous point still sending, skipping this update');
+            this.lastPosition = {
+                latitude,
+                longitude,
+                timestamp
+            };
+            return;
+        }
+
+        this.isSending = true;
         try {
             const response = await fetch(
                 getApiUrl(`/api/journey/${this.journeyId}/gps`),
@@ -217,6 +237,8 @@ class RealGPSTracker {
 
         } catch (error) {
             console.error('[RealGPS] Failed to send GPS point:', error);
+        } finally {
+            this.isSending = false;
         }
 
         // Update last position
@@ -315,6 +337,7 @@ class RealGPSTracker {
         this.pointsSent = 0;
         this.totalDistance = 0;
         this.gpsTrail = [];
+        this.isSending = false;
 
         document.getElementById('gps-accuracy').textContent = '-';
         document.getElementById('current-speed').textContent = '-';

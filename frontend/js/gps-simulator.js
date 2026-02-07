@@ -13,6 +13,7 @@ class GPSSimulator {
         this.pointsPerUpdate = 1;  // How many route points to skip per update
         this.testScenario = 'normal'; // Default test scenario
         this.originalRoute = null; // Store original route for scenario modifications
+        this.isSending = false;
     }
 
     /**
@@ -228,6 +229,9 @@ class GPSSimulator {
             alert('No journey active');
             return;
         }
+        if (window.realGPSTracker && window.realGPSTracker.isTracking) {
+            realGPSTracker.stop();
+        }
 
         // Get speed multiplier from dropdown
         const multiplierSelect = document.getElementById('sim-speed-multiplier');
@@ -235,7 +239,7 @@ class GPSSimulator {
 
         // Calculate interval and points to skip based on multiplier
         // Higher multiplier = faster animation (shorter interval, more points skipped)
-        this.baseInterval = Math.max(100, 500 / Math.sqrt(this.speedMultiplier));
+        this.baseInterval = Math.max(250, 500 / Math.sqrt(this.speedMultiplier));
         this.pointsPerUpdate = Math.max(1, Math.floor(this.speedMultiplier / 5));
 
         this.isRunning = true;
@@ -262,6 +266,7 @@ class GPSSimulator {
             clearInterval(this.intervalId);
             this.intervalId = null;
         }
+        this.isSending = false;
 
         this.updateSimulatorUI();
         this.updateJourneyStatus('Created (Not Started)');
@@ -288,6 +293,12 @@ class GPSSimulator {
      * Send next GPS point along route
      */
     async sendNextPoint() {
+        if (this.isSending) {
+            console.debug('[Simulator] Previous request still in flight, skipping tick');
+            return;
+        }
+
+        this.isSending = true;
         try {
             const coordinates = this.getRouteCoordinates();
 
@@ -346,11 +357,6 @@ class GPSSimulator {
                 accuracy: parseFloat(accuracy.toFixed(1))
             };
 
-            // UPDATE MAP MARKER IMMEDIATELY for visual feedback
-            if (window.mapManager) {
-                mapManager.updateCurrentPosition(lat, lng);
-            }
-
             // Send GPS point to backend
             const response = await fetch(
                 getApiUrl(`/api/journey/${this.journeyId}/gps`),
@@ -386,6 +392,8 @@ class GPSSimulator {
             // Alert user to ensure they see this error
             console.warn('[Simulator] CRITICAL ERROR:', error.message);
             this.stop(`Error sending point: ${error.message}`);
+        } finally {
+            this.isSending = false;
         }
     }
 
@@ -435,6 +443,7 @@ class GPSSimulator {
         this.route = null;
         this.currentIndex = 0;
         this.pointsSent = 0;
+        this.isSending = false;
 
         document.getElementById('points-sent').textContent = '0';
         document.getElementById('current-batch').textContent = '0';

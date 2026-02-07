@@ -10,6 +10,9 @@ class WebSocketClient {
         this.messageHandlers = [];
         this.totalDistance = 0;
         this.lastLocation = null;
+        this.lastMarkerUpdate = 0;
+        this.useMatchedPath = false;
+        this.matchedTrail = [];
     }
 
     /**
@@ -51,6 +54,8 @@ class WebSocketClient {
         // Reset stats on new connection
         this.totalDistance = 0;
         this.lastLocation = null;
+        this.useMatchedPath = false;
+        this.matchedTrail = [];
     }
 
     /**
@@ -147,9 +152,14 @@ class WebSocketClient {
 
         const { lat, lng, speed, accuracy } = message.location;
 
-        // Update map position
-        if (window.mapManager && mapManager.map) {
-            mapManager.updateCurrentPosition(lat, lng);
+        // Update map position (throttle to reduce visual jitter)
+        if (!this.useMatchedPath && window.mapManager && mapManager.map) {
+            const now = Date.now();
+            const minInterval = CONFIG.POSITION_UPDATE_INTERVAL_MS || 0;
+            if (minInterval === 0 || (now - this.lastMarkerUpdate) >= minInterval) {
+                mapManager.updateCurrentPosition(lat, lng);
+                this.lastMarkerUpdate = now;
+            }
         }
 
         // --- Update Stats ---
@@ -258,6 +268,37 @@ class WebSocketClient {
         if (window.gpsSimulator && window.gpsSimulator.isRunning) {
             document.getElementById('current-batch').textContent = message.batch_number;
         }
+
+        if (!message.map_matched) {
+            this.useMatchedPath = false;
+            return;
+        }
+
+        if (Array.isArray(message.matched_coords) && message.matched_coords.length > 0) {
+            this.useMatchedPath = true;
+            const newCoords = message.matched_coords.slice();
+            if (this.matchedTrail.length > 0) {
+                const last = this.matchedTrail[this.matchedTrail.length - 1];
+                const firstNew = newCoords[0];
+                if (last[0] === firstNew[0] && last[1] === firstNew[1]) {
+                    newCoords.shift();
+                }
+            }
+            this.matchedTrail = this.matchedTrail.concat(newCoords);
+
+            const lastCoord = this.matchedTrail[this.matchedTrail.length - 1];
+            if (lastCoord && window.mapManager) {
+                const [lng, lat] = lastCoord;
+                mapManager.updateCurrentPosition(lat, lng);
+                mapManager.updateGPSTrail(this.matchedTrail);
+            }
+
+            const locationEl = document.getElementById('current-location');
+            if (locationEl && lastCoord) {
+                const [lng, lat] = lastCoord;
+                locationEl.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+            }
+        }
     }
 
     /**
@@ -299,6 +340,8 @@ class WebSocketClient {
             this.ws = null;
         }
         this.connected = false;
+        this.useMatchedPath = false;
+        this.matchedTrail = [];
         this.updateConnectionStatus(false);
     }
 

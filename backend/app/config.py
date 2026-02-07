@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     # Optional Upstash Redis (REST) settings
     UPSTASH_REDIS_REST_URL: Optional[str] = None
     UPSTASH_REDIS_REST_TOKEN: Optional[str] = None
+
+    # Redis (redis-py) settings
+    REDIS_URL: Optional[str] = None
+    REDIS_GPS_LIST_LIMIT: int = 200
+    REDIS_DEVIATION_LIST_LIMIT: int = 200
+    REDIS_JOURNEY_TTL_SECONDS: int = 86400  # 24 hours
     
     class Config:
         env_file = ".env"

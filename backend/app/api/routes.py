@@ -15,7 +15,7 @@ from app.models.schemas import (
     ErrorResponse
 )
 from app.services.route_service import route_service
-from app.services.journey_service import journey_service
+from app.services.journey_store import journey_store
 from app.services.geocoding_service import geocoding_service
 from app.services.deviation_detector import DeviationDetector
 from app.services.route_tracker import RouteTracker
@@ -39,12 +39,12 @@ router = APIRouter(prefix="/api/journey", tags=["journey"])
 )
 async def start_journey(request: JourneyStartRequest) -> JourneyStartResponse:
     """
-    Start a new journey by fetching routes and creating database entry
+    Start a new journey by fetching routes and creating Redis entry
     
     This endpoint:
     1. Fetches route alternatives from Mapbox
-    2. Creates a journey record in the database
-    3. Stores route alternatives
+    2. Creates a journey record in Redis
+    3. Stores route alternatives in Redis
     4. Returns journey_id and routes
     """
     try:
@@ -66,8 +66,8 @@ async def start_journey(request: JourneyStartRequest) -> JourneyStartResponse:
                 detail="No routes found between the given locations"
             )
         
-        # Create journey in database
-        journey_id = await journey_service.create_journey(
+        # Create journey in Redis
+        journey_id = await journey_store.create_journey(
             request.origin,
             request.destination,
             request.travel_mode,
@@ -130,7 +130,7 @@ async def submit_gps_point(
     """
     try:
         # Verify journey exists
-        journey = await journey_service.get_journey(journey_id)
+        journey = await journey_store.get_journey_meta(journey_id)
         if not journey:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -143,9 +143,6 @@ async def submit_gps_point(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Journey {journey_id} is not active (status: {journey['status']})"
             )
-        
-        # Store GPS point (persistence)
-        await journey_service.store_gps_point(journey_id, gps_point)
         
         logger.debug(
             f"GPS point received for journey {journey_id}: "
@@ -198,7 +195,7 @@ async def get_journey_status(journey_id: str) -> JourneyState:
         logger.info(f"Fetching status for journey {journey_id}")
         
         # Get journey data
-        journey = await journey_service.get_journey(journey_id)
+        journey = await journey_store.get_journey_meta(journey_id)
         if not journey:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -206,11 +203,11 @@ async def get_journey_status(journey_id: str) -> JourneyState:
             )
         
         # Get routes
-        routes = await journey_service.get_routes(journey_id)
+        routes = await journey_store.get_routes(journey_id)
         logger.debug(f"Found {len(routes)} routes for journey")
         
         # Get recent GPS points (last 10 for context)
-        recent_gps = await journey_service.get_recent_gps_points(journey_id, limit=10)
+        recent_gps = await journey_store.get_recent_gps_points(journey_id, limit=10)
         last_gps = recent_gps[-1] if recent_gps else None
         logger.info(f"Found {len(recent_gps)} GPS points for journey")
         
@@ -392,14 +389,14 @@ async def complete_journey(journey_id: str) -> Dict[str, str]:
     Mark a journey as completed
     """
     try:
-        journey = await journey_service.get_journey(journey_id)
+        journey = await journey_store.get_journey_meta(journey_id)
         if not journey:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Journey {journey_id} not found"
             )
         
-        await journey_service.update_journey_status(
+        await journey_store.update_journey_status(
             journey_id,
             "completed",
             datetime.now()
