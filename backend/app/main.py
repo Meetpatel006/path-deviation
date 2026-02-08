@@ -11,6 +11,7 @@ from app.config import settings
 from app.utils.logger import logger
 from app.api import routes
 from app.api import websocket as websocket_routes
+from app.api import safety_routes
 from app.services.redis_client import get_redis, close_redis
 
 
@@ -113,6 +114,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 # Include routers
 app.include_router(routes.router)
 app.include_router(websocket_routes.router)
+app.include_router(safety_routes.router)
 
 
 # Health check endpoint

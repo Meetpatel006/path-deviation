@@ -168,3 +168,69 @@ class ErrorResponse(BaseModel):
                 "detail": "Latitude must be between -90 and 90"
             }
         }
+
+
+class SafetyLocationUpdateRequest(BaseModel):
+    """Incoming location update for safety zone tracking."""
+
+    user_id: str = Field(..., alias="userId", min_length=1, max_length=120)
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+    timestamp: datetime
+
+    class Config:
+        populate_by_name = True
+        json_schema_extra = {
+            "example": {
+                "userId": "tourist-123",
+                "latitude": 22.5608,
+                "longitude": 72.9201,
+                "timestamp": "2026-02-08T16:25:00Z"
+            }
+        }
+
+
+class SafetyEvent(BaseModel):
+    """Safety event generated from zone transition logic."""
+
+    zone_key: str = Field(..., alias="zoneKey")
+    zone_id: str = Field(..., alias="zoneId")
+    zone_type: str = Field(..., alias="zoneType")
+    zone_name: str = Field(..., alias="zoneName")
+    state: str
+    threshold_meters: Optional[int] = Field(None, alias="thresholdMeters")
+    message: str
+    occurred_at: datetime = Field(..., alias="occurredAt")
+
+    class Config:
+        populate_by_name = True
+
+
+class SafetyLocationUpdateResponse(BaseModel):
+    """Response for processed safety location update."""
+
+    status: str
+    user_id: str = Field(..., alias="userId")
+    location_stored_at: datetime = Field(..., alias="locationStoredAt")
+    events: List[SafetyEvent] = []
+
+    class Config:
+        populate_by_name = True
+
+
+class LatestUserLocation(BaseModel):
+    """Latest known location for a user."""
+
+    user_id: str = Field(..., alias="userId")
+    location: Dict[str, float]
+    timestamp: datetime
+    active_zone_count: int = Field(0, alias="activeZoneCount")
+
+    class Config:
+        populate_by_name = True
+
+
+class LatestUserLocationsResponse(BaseModel):
+    """Response containing latest known user locations."""
+
+    users: List[LatestUserLocation]
