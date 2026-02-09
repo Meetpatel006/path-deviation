@@ -44,6 +44,16 @@ async def process_location_update(
             timestamp=timestamp,
         )
 
+        # Save latest location with safety score
+        await safety_store.save_latest_location(
+            user_id=payload.user_id,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            timestamp=timestamp,
+            active_zone_count=len(events_raw),
+            safety_score=payload.safety_score,
+        )
+
         events = [SafetyEvent(**row) for row in events_raw]
         return SafetyLocationUpdateResponse(
             status="success",

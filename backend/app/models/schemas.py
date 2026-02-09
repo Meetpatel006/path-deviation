@@ -177,6 +177,7 @@ class SafetyLocationUpdateRequest(BaseModel):
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     timestamp: datetime
+    safety_score: float = Field(default=0.0, alias="safetyScore", ge=0.0, le=100.0)
 
     class Config:
         populate_by_name = True
@@ -185,7 +186,8 @@ class SafetyLocationUpdateRequest(BaseModel):
                 "userId": "tourist-123",
                 "latitude": 22.5608,
                 "longitude": 72.9201,
-                "timestamp": "2026-02-08T16:25:00Z"
+                "timestamp": "2026-02-08T16:25:00Z",
+                "safetyScore": 85.5
             }
         }
 
@@ -225,6 +227,7 @@ class LatestUserLocation(BaseModel):
     location: Dict[str, float]
     timestamp: datetime
     active_zone_count: int = Field(0, alias="activeZoneCount")
+    safety_score: float = Field(0.0, alias="safetyScore")
 
     class Config:
         populate_by_name = True

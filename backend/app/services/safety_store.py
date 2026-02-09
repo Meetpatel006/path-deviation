@@ -63,6 +63,7 @@ class SafetyStore:
         longitude: float,
         timestamp: datetime,
         active_zone_count: int,
+        safety_score: float = 0.0,
     ) -> None:
         """Persist latest known location for a user."""
         payload = {
@@ -70,6 +71,7 @@ class SafetyStore:
             "location": {"lat": latitude, "lng": longitude},
             "timestamp": timestamp.isoformat(),
             "activeZoneCount": int(active_zone_count),
+            "safetyScore": float(safety_score),
         }
 
         redis = await get_redis()
