@@ -112,30 +112,30 @@ def _message_for(zone: Dict[str, Any], event_state: str) -> str:
 
     if zone_type == "geofence":
         if event_state == "approaching":
-            return f"You are approaching the area {name} marked by your guide."
+            return f"You are going towards {name} that created by your guide."
         if event_state == "entering":
-            return f"You have entered the zone {name} created by your guide."
+            return f"You are entering zone {name} created by your guide."
         if event_state == "staying":
-            return f"You are currently within the zone {name}. Stay aware of your surroundings."
-        return f"You have exited the zone {name}."
+            return f"You are currently within the zone {name} created by your guide. Stay aware of your surroundings."
+        return f"You are leaving zone {name}."
 
     if zone_type == "risk_grid":
         if event_state == "approaching":
-            return f"Caution: You are nearing an incident-prone area. {title}."
+            return f"You are near an incident region and {title}."
         if event_state == "entering":
-            return f"Alert: You have entered a high-risk region. {title}."
+            return f"You are entering an incident region and {title}. Please stay alert."
         if event_state == "staying":
-            return f"Warning: You are within a high-risk area. Remain vigilant. {title}."
-        return "You are moving away from the high-risk area. Continue to stay alert."
+            return f"You are still within an incident region and {title}. Remain vigilant."
+        return f"You are leaving the incident region {title}. Continue to stay alert."
 
     # danger_zone
     if event_state == "approaching":
-        return f"Danger ahead: You are approaching a restricted or unsafe area. {description}."
+        return f"You are approaching a danger zone: {description}."
     if event_state == "entering":
-        return f"Critical alert: You have entered a dangerous zone. {description}."
+        return f"You are entering a danger zone: {description}. Please be cautious."
     if event_state == "staying":
-        return f"Immediate risk: You are still inside a dangerous area. Leave as soon as possible. {description}."
-    return "You have exited the dangerous zone. Stay cautious."
+        return f"You are still within a danger zone: {description}. Leave as soon as possible."
+    return f"You are leaving the danger zone: {description}. Stay cautious."
 
 
 class SafetyZoneEngine:
