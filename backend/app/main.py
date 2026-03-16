@@ -8,10 +8,10 @@ from contextlib import asynccontextmanager
 import time
 
 from app.config import settings
-from app.database import init_db, close_pg_pool
 from app.utils.logger import logger
 from app.api import routes
 from app.api import websocket as websocket_routes
+from app.api import safety_routes
 from app.services.redis_client import get_redis, close_redis
 
 
@@ -24,13 +24,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Path Deviation Detection System...")
     logger.info(f"Log level: {settings.LOG_LEVEL}")
     
-    # Initialize database
-    try:
-        await init_db()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
+    logger.info("Database disabled (Redis-only mode)")
     
     # Validate Mapbox API key
     if not settings.MAPBOX_API_KEY or settings.MAPBOX_API_KEY == "your_mapbox_api_key_here":
@@ -51,7 +45,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down application...")
     await close_redis()
-    await close_pg_pool()  # Close PostgreSQL connection pool
+    # Database disabled in Redis-only mode
     logger.info("Application shutdown complete")
 
 
@@ -120,6 +114,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 # Include routers
 app.include_router(routes.router)
 app.include_router(websocket_routes.router)
+app.include_router(safety_routes.router)
 
 
 # Health check endpoint
@@ -139,7 +134,7 @@ async def health_check():
     return {
         "status": "healthy",
         "version": "1.0.0",
-        "database": "connected",
+        "database": "disabled",
         "redis": redis_status
     }
 

@@ -16,14 +16,12 @@ from typing import List, Optional, Dict
 from datetime import datetime
 
 from app.models.schemas import GPSPoint, Route
-from app.services.gps_buffer import GPSBufferManager
 from app.services.map_matching import map_matching_service
 from app.services.deviation_detector import DeviationDetector
 from app.services.route_tracker import RouteTracker
-from app.services.journey_service import journey_service
+from app.services.gps_buffer import GPSBufferManager
 from app.services.journey_store import journey_store
 from app.services.websocket_manager import websocket_manager
-from app.database import execute_update
 from app.utils.logger import logger
 
 
@@ -39,11 +37,9 @@ class TrackingService:
         """Initialize tracking service"""
         # Journey state tracking
         self.active_journeys: Dict[str, dict] = {}
-        
-        # Initialize GPS buffer manager with batch callback
         self.buffer_manager = GPSBufferManager(self._process_batch)
         
-        logger.info("Initialized Unified Tracking Service with Redis backing")
+        logger.info("Initialized Unified Tracking Service with Redis backing and GPS batching")
 
     async def _load_journey_from_store(self, journey_id: str) -> bool:
         """
@@ -145,6 +141,7 @@ class TrackingService:
         }
         
         self.active_journeys[journey_id] = state
+        self.buffer_manager.get_or_create_buffer(journey_id)
         self._schedule_save(journey_id, state)
         
         logger.info(
@@ -172,9 +169,14 @@ class TrackingService:
                     "message": "Journey not being tracked"
                 }
         
+        # Persist GPS point in Redis (list + geo index)
+        await journey_store.add_gps_point(journey_id, gps_point)
+
         # Update point count
         self.active_journeys[journey_id]["total_points_received"] += 1
-        self._schedule_save(journey_id, self.active_journeys[journey_id])
+        total_points = self.active_journeys[journey_id]["total_points_received"]
+        if total_points % 5 == 0:
+            self._schedule_save(journey_id, self.active_journeys[journey_id])
         
         # Broadcast GPS update immediately for real-time UI feedback
         await websocket_manager.broadcast_gps_update(journey_id, {
@@ -186,13 +188,14 @@ class TrackingService:
             "accuracy": gps_point.accuracy
         })
 
-        # Add to buffer (may trigger batch processing)
+        # Queue for buffered batch processing (size/timeout based)
         batch_processed = await self.buffer_manager.add_point(journey_id, gps_point)
+        buffer_stats = self.buffer_manager.get_buffer_stats(journey_id)
         
         return {
             "status": "success",
             "batch_processed": batch_processed,
-            "buffer_stats": self.buffer_manager.get_buffer_stats(journey_id)
+            "buffer_stats": buffer_stats
         }
     
     async def _process_batch(self, journey_id: str, gps_points: List[GPSPoint]) -> None:
@@ -211,19 +214,23 @@ class TrackingService:
         
         journey_state = self.active_journeys[journey_id]
         journey_state["batches_processed"] += 1
-        batch_num = journey_state["batches_processed"]
-        
+        update_num = journey_state["batches_processed"]
+
         logger.info(
-            f"Processing batch #{batch_num} for journey {journey_id} "
-            f"({len(gps_points)} points)"
+            f"Processing update #{update_num} for journey {journey_id} "
+            f"({len(gps_points)} point(s))"
         )
         
         try:
-            # Step 1: Map matching
-            matched_coords, is_matched = await map_matching_service.match_trace_with_fallback(
-                gps_points,
-                journey_state["travel_mode"]
-            )
+            # Step 1: Map matching (skip for single point to avoid latency)
+            if len(gps_points) < 2:
+                matched_coords = [(p.lat, p.lng) for p in gps_points]
+                is_matched = False
+            else:
+                matched_coords, is_matched = await map_matching_service.match_trace_with_fallback(
+                    gps_points,
+                    journey_state["travel_mode"]
+                )
             
             logger.debug(
                 f"Map matching: {'SUCCESS' if is_matched else 'FALLBACK'} "
@@ -254,13 +261,7 @@ class TrackingService:
             )
             
             # Temporal deviation
-            journey_data = await journey_service.get_journey(journey_id)
-            if journey_data is None:
-                logger.error(f"Journey {journey_id} not found in database")
-                return
-            
-            # Handle start_time - could be string (PostgreSQL) or datetime (SQLite)
-            start_time = journey_data["start_time"]
+            start_time = journey_state.get("start_time", datetime.now())
             if isinstance(start_time, str):
                 start_time = datetime.fromisoformat(start_time)
             current_time = last_point.timestamp
@@ -312,7 +313,7 @@ class TrackingService:
                 f"Deviation: {spatial}, {temporal}, {directional} -> {severity.upper()}"
             )
             
-            # Step 4: Store deviation event in database
+            # Step 4: Store deviation event in Redis
             deviation_event = {
                 "journey_id": journey_id,
                 "timestamp": last_point.timestamp.isoformat(),
@@ -324,8 +325,8 @@ class TrackingService:
                 "time_deviation": time_deviation,
                 "route_probabilities": json.dumps(route_probabilities)
             }
-            
-            await self._store_deviation_event(deviation_event)
+
+            await journey_store.add_deviation_event(journey_id, deviation_event)
             
             # Update journey state
             journey_state["last_deviation"] = {
@@ -340,59 +341,25 @@ class TrackingService:
             
             # Step 5: Broadcast via WebSocket
             await websocket_manager.broadcast_deviation_update(journey_id, deviation_event)
+            matched_coords_lnglat = None
+            if is_matched and matched_coords:
+                matched_coords_lnglat = [[lng, lat] for lat, lng in matched_coords]
+            await websocket_manager.broadcast_batch_processed(journey_id, {
+                "batch_number": update_num,
+                "points_processed": len(gps_points),
+                "map_matched": is_matched,
+                "matched_coords": matched_coords_lnglat
+            })
             
             # Note: broadcast_gps_update moved to add_gps_point for real-time feedback
             
-            # Broadcast batch processed notification
-            await websocket_manager.broadcast_batch_processed(journey_id, {
-                "batch_number": batch_num,
-                "points_processed": len(gps_points),
-                "map_matched": is_matched
-            })
-            
-            logger.info(f"Batch #{batch_num} processing complete for journey {journey_id}")
+            logger.info(f"Update #{update_num} processing complete for journey {journey_id}")
             
         except Exception as e:
             logger.error(
                 f"Error processing batch for journey {journey_id}: {e}",
                 exc_info=True
             )
-    
-    async def _store_deviation_event(self, event: dict) -> None:
-        """
-        Store deviation event in database
-        
-        Args:
-            event: Deviation event data
-        """
-        try:
-            timestamp = event["timestamp"]
-            if isinstance(timestamp, str):
-                timestamp = datetime.fromisoformat(timestamp)
-            if timestamp.tzinfo is not None:
-                timestamp = timestamp.replace(tzinfo=None)
-
-            await execute_update("""
-                INSERT INTO deviation_events 
-                (journey_id, timestamp, severity, spatial_status, temporal_status, 
-                 directional_status, distance_from_route, time_deviation, route_probabilities)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                event["journey_id"],
-                timestamp,
-                event["severity"],
-                event["spatial_status"],
-                event["temporal_status"],
-                event["directional_status"],
-                event["distance_from_route"],
-                event["time_deviation"],
-                event["route_probabilities"]
-            ))
-            
-            logger.debug(f"Stored deviation event for journey {event['journey_id']}")
-            
-        except Exception as e:
-            logger.error(f"Error storing deviation event: {e}", exc_info=True)
     
     async def complete_journey(self, journey_id: str) -> None:
         """
@@ -405,10 +372,10 @@ class TrackingService:
             loaded = await self._load_journey_from_store(journey_id)
             if not loaded:
                 logger.warning(f"Journey {journey_id} not being tracked")
+                self.buffer_manager.remove_buffer(journey_id)
                 await journey_store.delete_journey_state(journey_id)
                 return
         
-        # Flush any remaining GPS points
         await self.buffer_manager.flush_buffer(journey_id)
         
         # Get stats
@@ -443,11 +410,6 @@ class TrackingService:
         stats.pop("detector", None)
         stats.pop("tracker", None)
         stats.pop("routes", None)
-        
-        # Add buffer stats
-        buffer_stats = self.buffer_manager.get_buffer_stats(journey_id)
-        if buffer_stats:
-            stats["buffer"] = buffer_stats
         
         return stats
     

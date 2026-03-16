@@ -40,6 +40,23 @@ class Settings(BaseSettings):
     # Optional Upstash Redis (REST) settings
     UPSTASH_REDIS_REST_URL: Optional[str] = None
     UPSTASH_REDIS_REST_TOKEN: Optional[str] = None
+
+    # Redis (redis-py) settings
+    REDIS_URL: Optional[str] = None
+    REDIS_GPS_LIST_LIMIT: int = 200
+    REDIS_DEVIATION_LIST_LIMIT: int = 200
+    REDIS_JOURNEY_TTL_SECONDS: int = 86400  # 24 hours
+
+    # Safety zone tracking
+    SAFETY_ZONES_URL: str = (
+        "https://smart-tourist-safety-app-backend-1.onrender.com"
+        "/api/geofence/all-zones-styled"
+    )
+    SAFETY_ZONE_CACHE_TTL_SECONDS: int = 300
+    SAFETY_STAYING_MINUTES: int = 5
+    SAFETY_NOTIFICATION_COOLDOWN_HOURS: int = 24
+    SAFETY_DEFAULT_POINT_RADIUS_METERS: int = 100
+    SAFETY_USERS_MAX_RESULTS: int = 1000
     
     class Config:
         env_file = ".env"

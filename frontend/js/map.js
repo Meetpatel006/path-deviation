@@ -7,6 +7,7 @@ class MapManager {
             destination: null,
             current: null
         };
+        this.smoothedPosition = null;
         this.routes = [];
         this.currentJourney = null;
         this.gpsTrail = [];
@@ -229,6 +230,40 @@ class MapManager {
      * Update current position marker
      */
     updateCurrentPosition(lat, lng) {
+        const smoothingEnabled = CONFIG.POSITION_SMOOTHING_ENABLED !== false;
+        const smoothingAlpha = CONFIG.POSITION_SMOOTHING_ALPHA || 0.12;
+        const minDistance = CONFIG.POSITION_MIN_DISTANCE_METERS || 0;
+
+        let targetLat = lat;
+        let targetLng = lng;
+
+        if (smoothingEnabled) {
+            if (!this.smoothedPosition) {
+                this.smoothedPosition = { lat: targetLat, lng: targetLng };
+            } else {
+                if (minDistance > 0) {
+                    const dist = this.calculateDistance(
+                        this.smoothedPosition.lat,
+                        this.smoothedPosition.lng,
+                        targetLat,
+                        targetLng
+                    );
+                    if (dist < minDistance) {
+                        targetLat = this.smoothedPosition.lat;
+                        targetLng = this.smoothedPosition.lng;
+                    }
+                }
+
+                this.smoothedPosition.lat =
+                    this.smoothedPosition.lat + smoothingAlpha * (targetLat - this.smoothedPosition.lat);
+                this.smoothedPosition.lng =
+                    this.smoothedPosition.lng + smoothingAlpha * (targetLng - this.smoothedPosition.lng);
+            }
+
+            targetLat = this.smoothedPosition.lat;
+            targetLng = this.smoothedPosition.lng;
+        }
+
         if (!this.markers.current) {
             // Create current position marker with animated pulse
             const el = document.createElement('div');
@@ -239,14 +274,33 @@ class MapManager {
             `;
 
             this.markers.current = new mapboxgl.Marker({ element: el })
-                .setLngLat([lng, lat])
+                .setLngLat([targetLng, targetLat])
                 .addTo(this.map);
         } else {
             // Animate position update
-            this.markers.current.setLngLat([lng, lat]);
+            this.markers.current.setLngLat([targetLng, targetLat]);
         }
 
-        console.log(`[Map] Updated position: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+        console.log(`[Map] Updated position: ${targetLat.toFixed(4)}, ${targetLng.toFixed(4)}`);
+    }
+
+    /**
+     * Calculate distance between two points in meters (Haversine formula)
+     */
+    calculateDistance(lat1, lng1, lat2, lng2) {
+        const R = 6371000; // Earth radius in meters
+        const toRad = deg => deg * Math.PI / 180;
+        const phi1 = toRad(lat1);
+        const phi2 = toRad(lat2);
+        const dPhi = toRad(lat2 - lat1);
+        const dLambda = toRad(lng2 - lng1);
+
+        const a = Math.sin(dPhi / 2) * Math.sin(dPhi / 2) +
+            Math.cos(phi1) * Math.cos(phi2) *
+            Math.sin(dLambda / 2) * Math.sin(dLambda / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c;
     }
 
     /**
@@ -317,6 +371,7 @@ class MapManager {
         this.clearGPSTrail();
         this.currentJourney = null;
         this.stopPickingLocation();
+        this.smoothedPosition = null;
 
         this.map.flyTo({
             center: CONFIG.DEFAULT_CENTER,

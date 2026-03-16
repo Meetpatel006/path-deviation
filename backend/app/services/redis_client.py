@@ -1,45 +1,49 @@
-"""Upstash Redis REST client wrapper.
+"""Redis client wrapper supporting redis-py and Upstash REST."""
+from typing import Optional, Union
 
-This module now reads configuration from `app.config.settings` so values
-from the project's `.env` (loaded via Pydantic `BaseSettings`) are available
-without requiring environment variables to be set in the OS.
-"""
-from typing import Optional
-
-from upstash_redis.asyncio import Redis
+from redis.asyncio import Redis as RedisPy
+from upstash_redis.asyncio import Redis as UpstashRedis
 
 from app.utils.logger import logger
 from app.config import settings
 
 
-_redis_client: Optional[Redis] = None
+_redis_client: Optional[Union[RedisPy, UpstashRedis]] = None
 
 
-async def get_redis() -> Optional[Redis]:
-    """Get or initialize the Upstash Redis client.
+async def get_redis() -> Optional[Union[RedisPy, UpstashRedis]]:
+    """Get or initialize the Redis client.
 
     Returns:
         Redis client instance or None if not configured
     """
     global _redis_client
-    url = settings.UPSTASH_REDIS_REST_URL
-    token = settings.UPSTASH_REDIS_REST_TOKEN
+    redis_url = settings.REDIS_URL
+    upstash_url = settings.UPSTASH_REDIS_REST_URL
+    upstash_token = settings.UPSTASH_REDIS_REST_TOKEN
 
-    if not url or not token:
-        logger.warning("Upstash Redis not configured (missing UPSTASH_REDIS_REST_URL/TOKEN)")
+    if not redis_url and not upstash_url:
+        logger.warning("Redis not configured (missing REDIS_URL or UPSTASH_REDIS_REST_URL)")
         return None
 
     if _redis_client is None:
-        _redis_client = Redis(url=url, token=token)
-        logger.info("Connected to Upstash Redis")
+        if redis_url:
+            _redis_client = RedisPy.from_url(redis_url, decode_responses=True)
+            logger.info("Connected to Redis (redis-py)")
+        else:
+            if not upstash_token:
+                logger.warning("Upstash Redis not configured (missing UPSTASH_REDIS_REST_TOKEN)")
+                return None
+            _redis_client = UpstashRedis(url=upstash_url, token=upstash_token)
+            logger.info("Connected to Upstash Redis (REST)")
 
     return _redis_client
 
 
 async def close_redis() -> None:
-    """Close the Upstash Redis client."""
+    """Close the Redis client."""
     global _redis_client
     if _redis_client is not None:
         await _redis_client.close()
         _redis_client = None
-        logger.info("Upstash Redis connection closed")
+        logger.info("Redis connection closed")

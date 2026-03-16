@@ -98,9 +98,12 @@ class GPSBuffer:
                     exc_info=True
                 )
     
-    async def _process_batch(self) -> None:
+    async def _process_batch(self, wait: bool = False) -> None:
         """
-        Trigger batch processing (fire and forget)
+        Trigger batch processing.
+        
+        Args:
+            wait: If True, process inline and wait for completion
         """
         if not self.buffer:
             logger.warning(f"Attempted to process empty batch for journey {self.journey_id}")
@@ -122,8 +125,11 @@ class GPSBuffer:
         self.buffer = self.buffer[-overlap_size:] if overlap_size > 0 else []
         self.last_batch_time = datetime.now()
         
-        # Launch background task
-        asyncio.create_task(self._process_safe_batch(batch_to_process))
+        # Launch background task by default; flush can wait synchronously
+        if wait:
+            await self._process_safe_batch(batch_to_process)
+        else:
+            asyncio.create_task(self._process_safe_batch(batch_to_process))
         
         logger.debug(
             f"Batch {self.batch_count} offloaded to background loop. "
@@ -138,7 +144,7 @@ class GPSBuffer:
         """
         if self.buffer:
             logger.info(f"Flushing buffer for journey {self.journey_id}")
-            await self._process_batch()
+            await self._process_batch(wait=True)
         else:
             logger.debug(f"No points to flush for journey {self.journey_id}")
     

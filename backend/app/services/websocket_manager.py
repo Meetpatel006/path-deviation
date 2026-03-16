@@ -237,7 +237,8 @@ class ConnectionManager:
             "journey_id": journey_id,
             "batch_number": batch_info.get("batch_number"),
             "points_processed": batch_info.get("points_processed"),
-            "map_matched": batch_info.get("map_matched", False)
+            "map_matched": batch_info.get("map_matched", False),
+            "matched_coords": batch_info.get("matched_coords")
         }
         
         return await self.broadcast_to_journey(journey_id, message)
