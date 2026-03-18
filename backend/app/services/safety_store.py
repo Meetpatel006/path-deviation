@@ -39,7 +39,7 @@ class SafetyStore:
             return json.loads(raw)
         except Exception as exc:
             logger.error(f"Failed to load safety zone state: {exc}", exc_info=True)
-            return {}
+            return self._memory_zone_state.get(user_id, {}).copy()
 
     async def save_zone_state(self, user_id: str, state: Dict[str, Any]) -> None:
         """Persist per-zone state for a user."""
@@ -55,6 +55,7 @@ class SafetyStore:
             await redis.expire(USERS_SET_KEY, ttl)
         except Exception as exc:
             logger.error(f"Failed to persist safety zone state: {exc}", exc_info=True)
+            self._memory_zone_state[user_id] = state
 
     async def save_latest_location(
         self,
@@ -86,6 +87,7 @@ class SafetyStore:
             await redis.expire(USERS_SET_KEY, ttl)
         except Exception as exc:
             logger.error(f"Failed to persist latest safety location: {exc}", exc_info=True)
+            self._memory_latest[user_id] = payload
 
     async def get_latest_locations(self, minutes: int, limit: int) -> List[Dict[str, Any]]:
         """Get latest known locations for recently active users."""
@@ -109,7 +111,12 @@ class SafetyStore:
                 user_ids = list(user_ids_raw or [])
         except Exception as exc:
             logger.error(f"Failed to fetch active safety users: {exc}", exc_info=True)
-            return []
+            for payload in self._memory_latest.values():
+                ts = self._parse_dt(payload.get("timestamp"))
+                if ts and ts >= cutoff:
+                    users.append(payload)
+            users.sort(key=lambda row: row.get("timestamp", ""), reverse=True)
+            return users[:limit]
 
         for user_id in user_ids:
             try:
@@ -123,6 +130,15 @@ class SafetyStore:
             except Exception as exc:
                 logger.error(f"Failed loading safety latest location: {exc}", exc_info=True)
 
+        users.sort(key=lambda row: row.get("timestamp", ""), reverse=True)
+        if users:
+            return users[:limit]
+
+        # Final fallback when Redis has no entries but in-process memory does.
+        for payload in self._memory_latest.values():
+            ts = self._parse_dt(payload.get("timestamp"))
+            if ts and ts >= cutoff:
+                users.append(payload)
         users.sort(key=lambda row: row.get("timestamp", ""), reverse=True)
         return users[:limit]
 
