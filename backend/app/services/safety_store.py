@@ -26,6 +26,15 @@ class SafetyStore:
     def _latest_key(self, user_id: str) -> str:
         return f"{SAFETY_PREFIX}:user:{user_id}:latest"
 
+    def _normalize_user_id(self, value: Any) -> str:
+        """Normalize Redis/member values to a plain user ID string."""
+        if isinstance(value, bytes):
+            try:
+                return value.decode("utf-8")
+            except Exception:
+                return value.decode("utf-8", errors="ignore")
+        return str(value)
+
     async def get_zone_state(self, user_id: str) -> Dict[str, Any]:
         """Get per-zone state map for a user."""
         redis = await get_redis()
@@ -120,7 +129,8 @@ class SafetyStore:
 
         for user_id in user_ids:
             try:
-                raw = await redis.get(self._latest_key(str(user_id)))
+                normalized_user_id = self._normalize_user_id(user_id)
+                raw = await redis.get(self._latest_key(normalized_user_id))
                 if not raw:
                     continue
                 payload = json.loads(raw)
