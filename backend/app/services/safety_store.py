@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
 from app.config import settings
-from app.services.redis_client import get_redis
+from app.services.redis_client import get_redis, mark_redis_unavailable
 from app.utils.logger import logger
 
 SAFETY_PREFIX = "safety"
@@ -48,6 +48,7 @@ class SafetyStore:
             return json.loads(raw)
         except Exception as exc:
             logger.error(f"Failed to load safety zone state: {exc}", exc_info=True)
+            await mark_redis_unavailable(str(exc))
             return self._memory_zone_state.get(user_id, {}).copy()
 
     async def save_zone_state(self, user_id: str, state: Dict[str, Any]) -> None:
@@ -64,6 +65,7 @@ class SafetyStore:
             await redis.expire(USERS_SET_KEY, ttl)
         except Exception as exc:
             logger.error(f"Failed to persist safety zone state: {exc}", exc_info=True)
+            await mark_redis_unavailable(str(exc))
             self._memory_zone_state[user_id] = state
 
     async def save_latest_location(
@@ -96,6 +98,7 @@ class SafetyStore:
             await redis.expire(USERS_SET_KEY, ttl)
         except Exception as exc:
             logger.error(f"Failed to persist latest safety location: {exc}", exc_info=True)
+            await mark_redis_unavailable(str(exc))
             self._memory_latest[user_id] = payload
 
     async def get_latest_locations(self, minutes: int, limit: int) -> List[Dict[str, Any]]:
@@ -120,6 +123,7 @@ class SafetyStore:
                 user_ids = list(user_ids_raw or [])
         except Exception as exc:
             logger.error(f"Failed to fetch active safety users: {exc}", exc_info=True)
+            await mark_redis_unavailable(str(exc))
             for payload in self._memory_latest.values():
                 ts = self._parse_dt(payload.get("timestamp"))
                 if ts and ts >= cutoff:
@@ -139,6 +143,7 @@ class SafetyStore:
                     users.append(payload)
             except Exception as exc:
                 logger.error(f"Failed loading safety latest location: {exc}", exc_info=True)
+                await mark_redis_unavailable(str(exc))
 
         users.sort(key=lambda row: row.get("timestamp", ""), reverse=True)
         if users:
