@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import socket
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
@@ -35,6 +36,25 @@ class SafetyStore:
                 return value.decode("utf-8", errors="ignore")
         return str(value)
 
+    def _is_expected_connectivity_error(self, exc: Exception) -> bool:
+        msg = str(exc).lower()
+        if isinstance(exc, (socket.gaierror, TimeoutError, ConnectionError, OSError)):
+            return True
+        return (
+            "getaddrinfo" in msg
+            or "name or service not known" in msg
+            or "connecterror" in msg
+            or "connection refused" in msg
+            or "temporarily failed in name resolution" in msg
+        )
+
+    async def _log_and_disable_redis(self, context: str, exc: Exception) -> None:
+        if self._is_expected_connectivity_error(exc):
+            logger.warning(f"{context}: {exc}")
+        else:
+            logger.error(f"{context}: {exc}", exc_info=True)
+        await mark_redis_unavailable(str(exc))
+
     async def get_zone_state(self, user_id: str) -> Dict[str, Any]:
         """Get per-zone state map for a user."""
         redis = await get_redis()
@@ -47,8 +67,7 @@ class SafetyStore:
                 return {}
             return json.loads(raw)
         except Exception as exc:
-            logger.error(f"Failed to load safety zone state: {exc}", exc_info=True)
-            await mark_redis_unavailable(str(exc))
+            await self._log_and_disable_redis("Failed to load safety zone state", exc)
             return self._memory_zone_state.get(user_id, {}).copy()
 
     async def save_zone_state(self, user_id: str, state: Dict[str, Any]) -> None:
@@ -64,8 +83,7 @@ class SafetyStore:
             await redis.sadd(USERS_SET_KEY, user_id)
             await redis.expire(USERS_SET_KEY, ttl)
         except Exception as exc:
-            logger.error(f"Failed to persist safety zone state: {exc}", exc_info=True)
-            await mark_redis_unavailable(str(exc))
+            await self._log_and_disable_redis("Failed to persist safety zone state", exc)
             self._memory_zone_state[user_id] = state
 
     async def save_latest_location(
@@ -97,8 +115,7 @@ class SafetyStore:
             await redis.sadd(USERS_SET_KEY, user_id)
             await redis.expire(USERS_SET_KEY, ttl)
         except Exception as exc:
-            logger.error(f"Failed to persist latest safety location: {exc}", exc_info=True)
-            await mark_redis_unavailable(str(exc))
+            await self._log_and_disable_redis("Failed to persist latest safety location", exc)
             self._memory_latest[user_id] = payload
 
     async def get_latest_locations(self, minutes: int, limit: int) -> List[Dict[str, Any]]:
@@ -122,8 +139,7 @@ class SafetyStore:
             else:
                 user_ids = list(user_ids_raw or [])
         except Exception as exc:
-            logger.error(f"Failed to fetch active safety users: {exc}", exc_info=True)
-            await mark_redis_unavailable(str(exc))
+            await self._log_and_disable_redis("Failed to fetch active safety users", exc)
             for payload in self._memory_latest.values():
                 ts = self._parse_dt(payload.get("timestamp"))
                 if ts and ts >= cutoff:
@@ -142,8 +158,7 @@ class SafetyStore:
                 if ts and ts >= cutoff:
                     users.append(payload)
             except Exception as exc:
-                logger.error(f"Failed loading safety latest location: {exc}", exc_info=True)
-                await mark_redis_unavailable(str(exc))
+                await self._log_and_disable_redis("Failed loading safety latest location", exc)
 
         users.sort(key=lambda row: row.get("timestamp", ""), reverse=True)
         if users:

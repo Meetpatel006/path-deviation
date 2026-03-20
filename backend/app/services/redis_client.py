@@ -1,6 +1,8 @@
 """Redis client wrapper supporting redis-py and Upstash REST."""
 from typing import Optional, Union
 import time
+import socket
+from urllib.parse import urlparse
 
 from redis.asyncio import Redis as RedisPy
 from upstash_redis.asyncio import Redis as UpstashRedis
@@ -58,6 +60,21 @@ async def get_redis() -> Optional[Union[RedisPy, UpstashRedis]]:
             if not isinstance(upstash_url, str) or not upstash_url.startswith(("http://", "https://")):
                 logger.warning("Invalid UPSTASH_REDIS_REST_URL; expected http(s) URL")
                 return None
+
+            parsed = urlparse(upstash_url)
+            host = parsed.hostname
+            if not host:
+                logger.warning("Invalid UPSTASH_REDIS_REST_URL; missing hostname")
+                await mark_redis_unavailable("invalid upstash hostname", cooldown_seconds=300)
+                return None
+
+            try:
+                socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80))
+            except socket.gaierror as exc:
+                logger.warning("Upstash hostname resolution failed for %s: %s", host, exc)
+                await mark_redis_unavailable(str(exc), cooldown_seconds=300)
+                return None
+
             _redis_client = UpstashRedis(url=upstash_url, token=upstash_token)
             logger.info("Connected to Upstash Redis (REST)")
 
