@@ -52,6 +52,8 @@ async def process_location_update(
             timestamp=timestamp,
             active_zone_count=len(events_raw),
             safety_score=payload.safety_score,
+            tourist_name=payload.tourist_name,
+            mobile_number=payload.mobile_number,
         )
 
         events = [SafetyEvent(**row) for row in events_raw]

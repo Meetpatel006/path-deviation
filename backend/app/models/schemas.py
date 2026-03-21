@@ -174,6 +174,8 @@ class SafetyLocationUpdateRequest(BaseModel):
     """Incoming location update for safety zone tracking."""
 
     user_id: str = Field(..., alias="userId", min_length=1, max_length=120)
+    tourist_name: Optional[str] = Field(default=None, alias="touristName", max_length=150)
+    mobile_number: Optional[str] = Field(default=None, alias="mobileNumber", max_length=30)
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     timestamp: datetime
@@ -224,6 +226,8 @@ class LatestUserLocation(BaseModel):
     """Latest known location for a user."""
 
     user_id: str = Field(..., alias="userId")
+    tourist_name: Optional[str] = Field(default=None, alias="touristName")
+    mobile_number: Optional[str] = Field(default=None, alias="mobileNumber")
     location: Dict[str, float]
     timestamp: datetime
     active_zone_count: int = Field(0, alias="activeZoneCount")

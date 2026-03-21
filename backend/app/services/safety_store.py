@@ -94,10 +94,14 @@ class SafetyStore:
         timestamp: datetime,
         active_zone_count: int,
         safety_score: float = 0.0,
+        tourist_name: str | None = None,
+        mobile_number: str | None = None,
     ) -> None:
         """Persist latest known location for a user."""
         payload = {
             "userId": user_id,
+            "touristName": tourist_name,
+            "mobileNumber": mobile_number,
             "location": {"lat": latitude, "lng": longitude},
             "timestamp": timestamp.isoformat(),
             "activeZoneCount": int(active_zone_count),
