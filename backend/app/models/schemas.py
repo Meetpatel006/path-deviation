@@ -2,7 +2,7 @@
 Pydantic models for request/response validation
 """
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional, Dict, Any
 from datetime import datetime
 
 
@@ -176,6 +176,13 @@ class SafetyLocationUpdateRequest(BaseModel):
     user_id: str = Field(..., alias="userId", min_length=1, max_length=120)
     tourist_name: Optional[str] = Field(default=None, alias="touristName", max_length=150)
     mobile_number: Optional[str] = Field(default=None, alias="mobileNumber", max_length=30)
+    role: Optional[str] = Field(default=None, alias="role", max_length=40)
+    group_id: Optional[str] = Field(default=None, alias="groupId", max_length=120)
+    emergency_contact: Optional[Dict[str, str]] = Field(default=None, alias="emergencyContact")
+    day_wise_itinerary: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        alias="dayWiseItinerary",
+    )
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     timestamp: datetime
@@ -228,6 +235,10 @@ class LatestUserLocation(BaseModel):
     user_id: str = Field(..., alias="userId")
     tourist_name: Optional[str] = Field(default=None, alias="touristName")
     mobile_number: Optional[str] = Field(default=None, alias="mobileNumber")
+    role: Optional[str] = Field(default=None, alias="role")
+    group_id: Optional[str] = Field(default=None, alias="groupId")
+    emergency_contact: Optional[Dict[str, str]] = Field(default=None, alias="emergencyContact")
+    day_wise_itinerary: Optional[List[Dict[str, Any]]] = Field(default=None, alias="dayWiseItinerary")
     location: Dict[str, float]
     timestamp: datetime
     active_zone_count: int = Field(0, alias="activeZoneCount")

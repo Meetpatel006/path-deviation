@@ -96,12 +96,20 @@ class SafetyStore:
         safety_score: float = 0.0,
         tourist_name: str | None = None,
         mobile_number: str | None = None,
+        role: str | None = None,
+        group_id: str | None = None,
+        emergency_contact: Dict[str, str] | None = None,
+        day_wise_itinerary: List[Dict[str, Any]] | None = None,
     ) -> None:
         """Persist latest known location for a user."""
         payload = {
             "userId": user_id,
             "touristName": tourist_name,
             "mobileNumber": mobile_number,
+            "role": role,
+            "groupId": group_id,
+            "emergencyContact": emergency_contact,
+            "dayWiseItinerary": day_wise_itinerary,
             "location": {"lat": latitude, "lng": longitude},
             "timestamp": timestamp.isoformat(),
             "activeZoneCount": int(active_zone_count),
