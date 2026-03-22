@@ -53,7 +53,7 @@ class Settings(BaseSettings):
         "/api/geofence/all-zones-styled"
     )
     SAFETY_ZONE_CACHE_TTL_SECONDS: int = 300
-    SAFETY_STAYING_MINUTES: int = 5
+    SAFETY_STAYING_MINUTES: int = 1
     SAFETY_NOTIFICATION_COOLDOWN_HOURS: int = 24
     SAFETY_DEFAULT_POINT_RADIUS_METERS: int = 100
     SAFETY_USERS_MAX_RESULTS: int = 1000
